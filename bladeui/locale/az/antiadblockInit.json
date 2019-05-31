@@ -1,0 +1,8 @@
+{
+  "notification_antiadblock_message": {
+    "message": "Bu səhifənin lazımi mesajları Blade istifadəçilərinə göstərir. Blade' un hədəf mesajları gizlətməyini istəyirsiniz?"
+  },
+  "notification_antiadblock_title": {
+    "message": "Hədəf mesajlar gizlədilsin?"
+  }
+}

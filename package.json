@@ -1,0 +1,73 @@
+{
+  "name": "blade",
+  "repository": "https://github.com/AdBank/blade-extension.git",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "npm-dollar": "^1.0.1",
+    "onchange": "^5.2.0"
+  },
+  "devDependencies": {
+    "//": [
+      "'dmg', 'extract-zip' and 'ncp' are needed by `download_*.js` modules",
+      "in adblockpluscore/test/.",
+      "The chromedriver version was pinned to that exact version, due to",
+      "incompatibilities with the configured chromium version and newer",
+      "drivers."
+    ],
+    "argparse": "^1.0.10",
+    "chromedriver": "2.36.0",
+    "dmg": "^0.1.0",
+    "eslint": "^5.1.0",
+    "eslint-config-eyeo": "^2.1.0",
+    "extract-zip": "^1.6.5",
+    "geckodriver": "^1.14.1",
+    "handlebars": "^4.0.12",
+    "jimp": "^0.3.11",
+    "mocha": "^5.2.0",
+    "ncp": "^2.0.0",
+    "request": "^2.88.0",
+    "selenium-webdriver": "^4.0.0-alpha",
+    "sign-addon": "^0.3.1"
+  },
+  "scripts": {
+    "$": "npm-dollar",
+    "test-prod": "npm run $ test-prod",
+    "prod": "npm run $ prod",
+    "pretest": "bash -c \"python ensure_dependencies.py\"",
+    "lint": "eslint *.js lib/ qunit/ ext/ test/ build/",
+    "test-only": "mocha",
+    "test": "npm run test-only --",
+    "posttest": "npm run lint",
+    "publish": "node build/publish.js",
+    "dev": "onchange '*.js' -e 'devenv.chrome'  -- npm run $ build"
+  },
+  "$": {
+    "build": [
+      "SKIP_DEPENDENCY_UPDATES=true ./build.py devenv -t chrome"
+    ],
+    "test-prod": [
+      "cd ./bladeui",
+      "npm i",
+      "$ bundle.popup",
+      "cd ../buildtools/",
+      "npm i",
+      "cd ..",
+      "SKIP_DEPENDENCY_UPDATES=true ./build.py devenv -t chrome",
+      "cd -"
+    ],
+    "prod": [
+      "npm i",
+      "cd ./bladeui",
+      "npm i",
+      "$ bundle.popup",
+      "$ bundle.blade",
+      "cd ../buildtools/",
+      "npm i",
+      "cd ..",
+      "SKIP_DEPENDENCY_UPDATES=true ./build.py devenv -t chrome",
+      "cd devenv.chrome",
+      "zip -r ../blade.zip *",
+      "cd -"
+    ]
+  }
+}

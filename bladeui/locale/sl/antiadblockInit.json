@@ -1,0 +1,8 @@
+{
+  "notification_antiadblock_message": {
+    "message": "Ta stran uporabnikom dodatka Blade prikazuje ciljana sporočila. Želite, da Blade skrije ta sporočila?"
+  },
+  "notification_antiadblock_title": {
+    "message": "Skrij ciljana sporočila?"
+  }
+}

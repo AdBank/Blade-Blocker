@@ -1,0 +1,8 @@
+{
+  "notification_antiadblock_message": {
+    "message": "Bu site Blade kullanıcılarını hedef alan iletiler göstermesiyle bilinir. Blade'ın hedeflenen iletileri gizlemesini istiyor musunuz?"
+  },
+  "notification_antiadblock_title": {
+    "message": "Hedeflenen iletileri gizlemek istiyor musunuz?"
+  }
+}

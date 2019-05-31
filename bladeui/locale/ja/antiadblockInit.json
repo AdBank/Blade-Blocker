@@ -1,0 +1,8 @@
+{
+  "notification_antiadblock_message": {
+    "message": "このサイトは Blade ユーザーを対象としたメッセージを表示することで知られています。Blade でこれらのメッセージを非表示にしますか？"
+  },
+  "notification_antiadblock_title": {
+    "message": "Blade ユーザー向けのメッセージを非表示にしますか？"
+  }
+}

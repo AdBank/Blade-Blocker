@@ -1,0 +1,8 @@
+{
+  "notification_antiadblock_message": {
+    "message": "يعرف هذا الموقع بإظهاره رسائل موجهة إلى المستخدمي Blade. هل تريد أن يخفي Blade هذه الرسائل المستهدفة؟"
+  },
+  "notification_antiadblock_title": {
+    "message": "إخفاء الرسائل المستهدفة؟"
+  }
+}

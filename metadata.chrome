@@ -1,0 +1,119 @@
+[general]
+basename = bladeadblockerchrome
+version = 1.0.0
+author = Adbank
+backgroundScripts = polyfill.js
+  ext/common.js
+  ext/background.js
+  lib/compat.js
+  lib/publicSuffixList.js
+  lib/adblockplus.js
+testScripts = ../polyfill.js
+  ../ext/common.js
+  ../ext/background.js
+  ../lib/compat.js
+  ../lib/publicSuffixList.js
+  tests.js
+browserAction =
+  icons/blade/blade-16.png
+  icons/blade/blade-19.png
+  icons/blade/blade-20.png
+  icons/blade/blade-32.png
+  icons/blade/blade-38.png
+  icons/blade/blade-40.png
+  popup.html
+icons =
+  icons/blade/blade-16.png
+  icons/blade/blade-32.png
+  icons/blade/blade-48.png
+  icons/blade/blade-64.png
+  icons/blade/blade-128.png
+
+[manifest]
+devtools_page = devtools.html
+storage.managed_schema = managed-storage-schema.json
+permissions =
+  tabs
+  <all_urls>
+  contextMenus
+  webRequest
+  webRequestBlocking
+  webNavigation
+  storage
+  unlimitedStorage
+  notifications
+
+web_accessible_resources =
+  icons/*
+
+[compat]
+chrome = 49.0
+opera = 36.0
+
+[contentScripts]
+document_start =
+  polyfill.js
+  ext/common.js
+  ext/content.js
+  include.preload.js
+document_idle = blade.idle.js
+document_end = include.postload.js
+
+[mapping]
+subscriptions.xml = adblockpluscore/chrome/content/ui/subscriptions.xml
+common.js = bladeui/common.js
+i18n.js = bladeui/i18n.js
+icons/blade/blade-128.png = bladeui/skin/blade_icons/blade-128.png
+skin/blade_icons/pending-referral.svg = bladeui/skin/blade_icons/pending-referral.svg
+skin/blade_assets/blade-background-all-other-screens.png = bladeui/skin/blade_assets/blade-background-all-other-screens.png
+skin/blade_assets/blade-background-get-started.png = bladeui/skin/blade_assets/blade-background-get-started.png
+skin/blade_assets/blade-logo.svg = bladeui/skin/blade_assets/blade-logo.svg
+skin/blade_assets/blade-powered-adbank-logo.svg = bladeui/skin/blade_assets/blade-powered-adbank-logo.svg
+skin/blade_assets/feed-coming-soon.png = bladeui/skin/blade_assets/feed-coming-soon.png
+skin/blade_assets/referrals-coming-soon.png = bladeui/skin/blade_assets/referrals-coming-soon.png
+skin/blade_assets/dashboard-coming-soon.png = bladeui/skin/blade_assets/dashboard-coming-soon.png
+skin/blade_assets/transfer-coming-soon.png = bladeui/skin/blade_assets/transfer-coming-soon.png
+
+devtools-panel.html = bladeui/devtools-panel.html
+devtools-panel.js = bladeui/devtools-panel.js
+skin/devtools-panel.css = bladeui/skin/devtools-panel.css
+updates.html = bladeui/updates.html
+updates.js = bladeui/updates.js
+snippets.js = adblockpluscore/lib/content/snippets.js
+popup.js = bladeui/popup.js
+popup.html = bladeui/popup.html
+welcome.html = bladeui/welcome.html
+skin/blade.css = bladeui/skin/blade.css
+
+[bundles]
+lib/adblockplus.js =
+  adblockpluscore/lib/filterListener.js
+  adblockpluscore/lib/synchronizer.js
+  lib/devtools.js
+  lib/requestBlocker.js
+  lib/popupBlocker.js
+  lib/subscriptionInit.js
+  lib/filterComposer.js
+  lib/stats.js
+  lib/uninstall.js
+  lib/csp.js
+  lib/contentFiltering.js
+  bladeui/messageResponder.js
+include.preload.js =
+  include.preload.js
+  inject.preload.js
+include.postload.js =
+  subscriptionLink.postload.js
+  composer.postload.js
+
+[import_locales]
+bladeui/locale/*/antiadblockInit.json = *
+bladeui/locale/*/common.json = *
+bladeui/locale/*/composer.json = *
+bladeui/locale/*/filter-validation.json = *
+bladeui/locale/*/first-run.json = *
+bladeui/locale/*/issue-reporter.json = *
+bladeui/locale/*/manifest.json = *
+bladeui/locale/*/notification-helper.json = *
+bladeui/locale/*/popup.json = *
+bladeui/locale/*/updates.json = *

@@ -1,0 +1,8 @@
+{
+  "notification_antiadblock_message": {
+    "message": "Acest site trimite mesaje personalizate utilizatorilor Blade. Vrei ca Blade să ascundă aceste mesaje?"
+  },
+  "notification_antiadblock_title": {
+    "message": "Vrei sa ascunzi mesajele personalizate?"
+  }
+}
