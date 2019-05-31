@@ -16,7 +16,7 @@ const html = `
   </div>
   <footer>
     <div class="version"><p class="text">Version</p><p class="version-number">0.0.1</p></div>
-    <div class="toggler" id="toggler"><p>Status</p>${checkbox()}</div>
+    <div class="toggler" id="toggler"><p>Status</p>${checkbox(true)}</div>
   </footer>
 </div>
 `;

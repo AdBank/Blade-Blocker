@@ -21,14 +21,17 @@ class Main extends BaseClass
 
     browser.tabs.query({active: true, lastFocusedWindow: true}, tabs =>
     {
-      if (tabs.length)
+      if (mainAppWrapper)
       {
         this.initToggleOnOff({id: tabs[0].id, url: tabs[0].url})
       };
     });
 
     browser.runtime.sendMessage({type: "prefs.get", key: "blocked_total"}, (blockedTotal) => {
-      blockedCount.innerHTML = blockedTotal;
+      if (blockedCount)
+      {
+        blockedCount.innerHTML = blockedTotal;
+      }
     });
 
     mainAppWrapper.classList.remove("custom-bg");
@@ -36,6 +39,7 @@ class Main extends BaseClass
 
   initToggleOnOff(tab)
   {
+    console.log(tab);
     isPageWhitelisted(tab, whitelisted =>
     {
       if (whitelisted)
