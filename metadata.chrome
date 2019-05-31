@@ -56,7 +56,6 @@ document_start =
   ext/common.js
   ext/content.js
   include.preload.js
-document_idle = blade.idle.js
 document_end = include.postload.js
 
 [mapping]
