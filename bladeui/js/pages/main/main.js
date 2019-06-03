@@ -21,7 +21,7 @@ class Main extends BaseClass
 
     browser.tabs.query({active: true, lastFocusedWindow: true}, tabs =>
     {
-      if (mainAppWrapper)
+      if (mainAppWrapper && tabs.length)
       {
         this.initToggleOnOff({id: tabs[0].id, url: tabs[0].url})
       };
@@ -39,14 +39,13 @@ class Main extends BaseClass
 
   initToggleOnOff(tab)
   {
-    console.log(tab);
     isPageWhitelisted(tab, whitelisted =>
-    {
-      if (whitelisted)
       {
-        this.toggler.checked = false;
-      }
-    });
+        if (whitelisted)
+        {
+          this.toggler.checked = false;
+        }
+      });
 
     this.toggler.addEventListener("change", () =>
     {
