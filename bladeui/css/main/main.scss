@@ -1,0 +1,50 @@
+.main-view {
+  text-align: center;
+  padding-top: 32px;
+
+  .content {
+    margin: 75px -24px 50px -24px;
+    padding: 24px 0;
+    background: rgba(#333333, .5);
+
+    .count {
+      margin-bottom: 8px;
+      color: #FFFFFF;	
+      font: 900 16px / 24px Montserrat;
+      letter-spacing: 0.8px;
+    }
+
+    .caption-count {
+      color: #EC1D25;
+      font: 400 10px / 14px Montserrat;
+    }
+  }
+
+  footer {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 40px;
+
+    p {
+      margin-bottom: 4px;
+      color: #EEEEEE;	
+      font-family: Montserrat;	
+      font: 700 14px / 16px Montserrat;
+      letter-spacing: 0.2px;
+    }
+
+    .version-number {
+      font-size: 14px;
+    }
+
+    .version {
+      .text {
+        font-size: 12px;
+      }
+    }
+  }
+
+  .toggle-checkbox .slide-toggle {
+    margin: auto;
+  }
+}
