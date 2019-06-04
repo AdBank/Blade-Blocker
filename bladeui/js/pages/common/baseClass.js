@@ -2,12 +2,31 @@
 
 /* eslint-disable max-len */
 
+const INCOMPLETE_SETUP_PAGE = "getStarted";
+
 class BaseClass
 {
   constructor({onChangeView})
   {
     this.wrapper = document.getElementById("main-app-wrapper");
     this.emitViewChange = onChangeView;
+
+    browser.storage.onChanged.addListener(this.listenOnUserDataCleanUp.bind(this));
+  }
+
+  listenOnUserDataCleanUp(changes, area)
+  {
+    if (area === "sync")
+    {
+      const changedItems = Object.keys(changes);
+      for (const item of changedItems)
+      {
+        if (item === "bladeReplacerInstalled" && changes[item].newValue === false)
+        {
+          this.handleChangeView(INCOMPLETE_SETUP_PAGE);
+        }
+      }
+    }
   }
 
   _setNotauthorizedIcon()

@@ -5,6 +5,7 @@ author = Adbank
 backgroundScripts = polyfill.js
   ext/common.js
   ext/background.js
+  ext/bladeCommunicator.js
   lib/compat.js
   lib/publicSuffixList.js
   lib/adblockplus.js
