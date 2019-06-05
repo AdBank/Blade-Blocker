@@ -3,7 +3,7 @@
 STRING_MATCHER_START="URL = \""
 STRING_MATCHER_END="\";"
 PROD_URL=$1
-PATH_TO_FILE_WITH_URL="./bladeui/js/utils/request.js"
+PATH_TO_FILE_WITH_URL="./bladeui/js/utils/saveAdserverUrl.js"
 
 docker run -it -d --name blade blade
 
@@ -15,7 +15,7 @@ docker exec blade npm i
 
 docker exec blade npm run prod
 
-docker cp blade:/app/blade.zip .
+docker cp blade:/app/blade-blocker.zip .
 
 docker cp blade:/app/devenv.chrome .
 

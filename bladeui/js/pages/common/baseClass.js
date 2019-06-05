@@ -1,11 +1,11 @@
 "use strict";
 
-/* eslint-disable max-len */
-
-const saveAdserverUrl = require("../../utils/saveAdserverUrl");
+/* eslint-disable */
 
 const INCOMPLETE_SETUP_PAGE = "getStarted";
 const FIRST_PAGE = "main";
+
+const saveAdserverUrl = require("../../utils/saveAdserverUrl");
 
 class BaseClass
 {
@@ -14,9 +14,16 @@ class BaseClass
     this.wrapper = document.getElementById("main-app-wrapper");
     this.emitViewChange = onChangeView;
 
-    browser.storage.onChanged.addListener(this.listenOnUserDataCleanUp.bind(this));
+    browser.storage.sync.get(null, data =>
+      {
+        if (!data.bladeAdserverUrl)
+        {
+          saveAdserverUrl();
+        }
+      }
+    );
 
-    saveAdserverUrl();
+    browser.storage.onChanged.addListener(this.listenOnUserDataCleanUp.bind(this));
   }
 
   listenOnUserDataCleanUp(changes, area)
@@ -30,6 +37,7 @@ class BaseClass
         {
           this.handleChangeView(INCOMPLETE_SETUP_PAGE);
 
+          console.log("i clear storage");
           browser.storage.sync.clear();
         }
         if (item === "bladeReplacerInstalled" && changes[item].newValue === true)
