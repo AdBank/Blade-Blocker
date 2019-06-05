@@ -3,6 +3,7 @@
 /* eslint-disable max-len */
 
 const INCOMPLETE_SETUP_PAGE = "getStarted";
+const FIRST_PAGE = "main";
 
 class BaseClass
 {
@@ -21,9 +22,15 @@ class BaseClass
       const changedItems = Object.keys(changes);
       for (const item of changedItems)
       {
-        if (item === "bladeReplacerInstalled" && changes[item].newValue === false)
+        if (item === "bladeReplacerInstalled" && (changes[item].newValue === false || changes[item].newValue === undefined))
         {
           this.handleChangeView(INCOMPLETE_SETUP_PAGE);
+
+          browser.storage.sync.clear();
+        }
+        if (item === "bladeReplacerInstalled" && changes[item].newValue === true)
+        {
+          this.handleChangeView(FIRST_PAGE);
         }
       }
     }

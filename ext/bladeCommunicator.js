@@ -1,3 +1,4 @@
+//listener on message when replacer is installed
 const REPLACER_EXTENSION_ID = 'okgilpemcanifjabahmbpmgohnelcoko';
 
 chrome.runtime.onMessageExternal.addListener(
@@ -8,3 +9,5 @@ chrome.runtime.onMessageExternal.addListener(
       }
     }
 });
+
+//listener on message when replacer sends user bladeid (after user signin/signup)
