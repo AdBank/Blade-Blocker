@@ -1,16 +1,8 @@
 "use strict";
 
-const {makeRequest} = require("./request");
-
 function getAdserverUrl()
 {
-  makeRequest({
-    method: "get",
-    url: "/api/config/adserver",
-    headers: {
-      "Content-Type": "application/json"
-    }
-  })
+  fetch("/api/config/adserver")
   .then((response) =>
   {
     const adbankUrl = response.data.adserver_url;

@@ -2,6 +2,8 @@
 
 /* eslint-disable max-len */
 
+const saveAdserverUrl = require("../../utils/saveAdserverUrl");
+
 const INCOMPLETE_SETUP_PAGE = "getStarted";
 const FIRST_PAGE = "main";
 
@@ -13,6 +15,8 @@ class BaseClass
     this.emitViewChange = onChangeView;
 
     browser.storage.onChanged.addListener(this.listenOnUserDataCleanUp.bind(this));
+
+    saveAdserverUrl();
   }
 
   listenOnUserDataCleanUp(changes, area)
