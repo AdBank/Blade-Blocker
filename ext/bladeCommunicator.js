@@ -1,4 +1,4 @@
-const REPLACER_EXTENSION_ID = 'okgilpemcanifjabahmbpmgohnelcoko';
+const REPLACER_EXTENSION_ID = 'piflhcebimeekhiijcnfifobipcpjggn';
 
 chrome.runtime.onMessageExternal.addListener(
   function(request, sender, sendResponse) {
