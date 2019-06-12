@@ -94,7 +94,7 @@ browser.runtime.sendMessage({
 
 document.addEventListener("DOMContentLoaded", async () =>
 {
-  const REPLACER_EXTENSION_ID = "okgilpemcanifjabahmbpmgohnelcoko";
+  const REPLACER_EXTENSION_ID = "piflhcebimeekhiijcnfifobipcpjggn";
 
   await renderInitialView();
 
