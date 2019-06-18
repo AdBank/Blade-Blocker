@@ -1,4 +1,4 @@
-# BLADE-extension
+# BLADE-BLOCKER extension
 
 ### Building extension
 
@@ -8,8 +8,8 @@ Download **Docker** for your platform. https://www.docker.com/get-started
 
 Run following commands in terminal:
 ```sh
-git clone https://github.com/AdBank/blade-extension.git
-cd ./blade-extension
+git clone https://github.com/AdBank/Blade-Blocker
+cd ./BLADE-BLOCKER
 ./build.sh
 ./run-daemon.sh <paste here url (f.e. http://example.com)> or leave it empty to run with dev server
 ```

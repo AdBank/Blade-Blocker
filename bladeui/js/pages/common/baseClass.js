@@ -1,6 +1,11 @@
 "use strict";
 
-/* eslint-disable max-len */
+/* eslint-disable */
+
+const INCOMPLETE_SETUP_PAGE = "getStarted";
+const FIRST_PAGE = "main";
+
+const saveAdserverUrl = require("../../utils/saveAdserverUrl");
 
 class BaseClass
 {
@@ -8,6 +13,39 @@ class BaseClass
   {
     this.wrapper = document.getElementById("main-app-wrapper");
     this.emitViewChange = onChangeView;
+
+    browser.storage.sync.get(null, data =>
+      {
+        if (!data.bladeAdserverUrl)
+        {
+          saveAdserverUrl();
+        }
+      }
+    );
+
+    browser.storage.onChanged.addListener(this.listenOnUserDataCleanUp.bind(this));
+  }
+
+  listenOnUserDataCleanUp(changes, area)
+  {
+    if (area === "sync")
+    {
+      const changedItems = Object.keys(changes);
+      for (const item of changedItems)
+      {
+        if (item === "bladeReplacerInstalled" && (changes[item].newValue === false || changes[item].newValue === undefined))
+        {
+          this.handleChangeView(INCOMPLETE_SETUP_PAGE);
+
+          console.log("i clear storage");
+          browser.storage.sync.clear();
+        }
+        if (item === "bladeReplacerInstalled" && changes[item].newValue === true)
+        {
+          this.handleChangeView(FIRST_PAGE);
+        }
+      }
+    }
   }
 
   _setNotauthorizedIcon()

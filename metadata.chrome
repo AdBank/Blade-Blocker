@@ -5,6 +5,7 @@ author = Adbank
 backgroundScripts = polyfill.js
   ext/common.js
   ext/background.js
+  ext/bladeCommunicator.js
   lib/compat.js
   lib/publicSuffixList.js
   lib/adblockplus.js
@@ -81,7 +82,6 @@ updates.js = bladeui/updates.js
 snippets.js = adblockpluscore/lib/content/snippets.js
 popup.js = bladeui/popup.js
 popup.html = bladeui/popup.html
-welcome.html = bladeui/welcome.html
 skin/blade.css = bladeui/skin/blade.css
 
 [bundles]

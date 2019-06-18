@@ -18,7 +18,7 @@ class GetStarted extends BaseClass
 
     mainAppWrapper.classList.add("custom-bg");
 
-    btn.addEventListener("click", this.handleOpenNextPage.bind(this));
+    // btn.addEventListener("click", this.handleOpenNextPage.bind(this));
   }
 
   handleOpenNextPage()
