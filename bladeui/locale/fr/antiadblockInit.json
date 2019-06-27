@@ -1,8 +1,0 @@
-{
-  "notification_antiadblock_message": {
-    "message": "Ce site est connu pour afficher des messages destinés aux utilisateurs d'Blade. Voulez-vous qu'Blade cache ces messages ?"
-  },
-  "notification_antiadblock_title": {
-    "message": "Cacher les messages ciblés ?"
-  }
-}

@@ -1,5 +1,5 @@
 [general]
-basename = bladeadblockerchrome
+basename = blockerblade
 version = 1.0.0
 author = Adbank
 backgroundScripts = polyfill.js
@@ -7,14 +7,13 @@ backgroundScripts = polyfill.js
   ext/background.js
   ext/bladeCommunicator.js
   lib/compat.js
-  lib/publicSuffixList.js
   lib/adblockplus.js
 testScripts = ../polyfill.js
   ../ext/common.js
   ../ext/background.js
   ../lib/compat.js
-  ../lib/publicSuffixList.js
   tests.js
+options = options.html
 browserAction =
   icons/blade/blade-16.png
   icons/blade/blade-19.png
@@ -28,7 +27,6 @@ icons =
   icons/blade/blade-32.png
   icons/blade/blade-48.png
   icons/blade/blade-64.png
-  icons/blade/blade-128.png
 
 [manifest]
 devtools_page = devtools.html
@@ -44,9 +42,6 @@ permissions =
   unlimitedStorage
   notifications
 
-web_accessible_resources =
-  icons/*
-
 [compat]
 chrome = 49.0
 opera = 36.0
@@ -60,29 +55,107 @@ document_start =
 document_end = include.postload.js
 
 [mapping]
-subscriptions.xml = adblockpluscore/chrome/content/ui/subscriptions.xml
-common.js = bladeui/common.js
-i18n.js = bladeui/i18n.js
-icons/blade/blade-128.png = bladeui/skin/blade_icons/blade-128.png
-skin/blade_icons/pending-referral.svg = bladeui/skin/blade_icons/pending-referral.svg
-skin/blade_assets/blade-background-all-other-screens.png = bladeui/skin/blade_assets/blade-background-all-other-screens.png
-skin/blade_assets/blade-background-get-started.png = bladeui/skin/blade_assets/blade-background-get-started.png
-skin/blade_assets/blade-logo.svg = bladeui/skin/blade_assets/blade-logo.svg
-skin/blade_assets/blade-powered-adbank-logo.svg = bladeui/skin/blade_assets/blade-powered-adbank-logo.svg
-skin/blade_assets/feed-coming-soon.png = bladeui/skin/blade_assets/feed-coming-soon.png
-skin/blade_assets/referrals-coming-soon.png = bladeui/skin/blade_assets/referrals-coming-soon.png
-skin/blade_assets/dashboard-coming-soon.png = bladeui/skin/blade_assets/dashboard-coming-soon.png
-skin/blade_assets/transfer-coming-soon.png = bladeui/skin/blade_assets/transfer-coming-soon.png
-
-devtools-panel.html = bladeui/devtools-panel.html
-devtools-panel.js = bladeui/devtools-panel.js
-skin/devtools-panel.css = bladeui/skin/devtools-panel.css
-updates.html = bladeui/updates.html
-updates.js = bladeui/updates.js
+common.js = adblockplusui/common.js
+composer.html = adblockplusui/composer.html
+composer.js = adblockplusui/composer.js
+desktop-options.html = adblockplusui/desktop-options.html
+desktop-options.js = adblockplusui/desktop-options.js
+devtools-panel.html = adblockplusui/devtools-panel.html
+devtools-panel.js = adblockplusui/devtools-panel.js
+first-run.html = adblockplusui/first-run.html
+first-run.js = adblockplusui/first-run.js
+i18n.js = adblockplusui/i18n.js
+issue-reporter.html = adblockplusui/issue-reporter.html
+issue-reporter.js = adblockplusui/issue-reporter.js
+popup.html = adblockplusui/popup.html
+popup.js = adblockplusui/popup.js
 snippets.js = adblockpluscore/lib/content/snippets.js
-popup.js = bladeui/popup.js
-popup.html = bladeui/popup.html
-skin/blade.css = bladeui/skin/blade.css
+updates.html = adblockplusui/updates.html
+updates.js = adblockplusui/updates.js
+data/languages.json = adblockplusui/data/languages.json
+icons/detailed/abp-128.png = adblockplusui/skin/icons/abp-128.png
+skin/common.css = adblockplusui/skin/common.css
+skin/composer.css = adblockplusui/skin/composer.css
+skin/desktop-options.css = adblockplusui/skin/desktop-options.css
+skin/devtools-panel.css = adblockplusui/skin/devtools-panel.css
+skin/first-run.css = adblockplusui/skin/first-run.css
+skin/fonts.css = adblockplusui/skin/fonts.css
+skin/issue-reporter.css = adblockplusui/skin/issue-reporter.css
+skin/popup.css = adblockplusui/skin/popup.css
+skin/blade.css = adblockplusui/skin/blade.css
+skin/updates.css = adblockplusui/skin/updates.css
+skin/web.css = adblockplusui/skin/web.css
+skin/backgrounds/appstore.svg = adblockplusui/skin/backgrounds/appstore.svg
+skin/backgrounds/googleplay.svg = adblockplusui/skin/backgrounds/googleplay.svg
+skin/fonts/Source-Sans-Pro/300/cyrillic-ext.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/300/cyrillic-ext.woff2
+skin/fonts/Source-Sans-Pro/300/cyrillic.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/300/cyrillic.woff2
+skin/fonts/Source-Sans-Pro/300/greek-ext.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/300/greek-ext.woff2
+skin/fonts/Source-Sans-Pro/300/greek.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/300/greek.woff2
+skin/fonts/Source-Sans-Pro/300/latin-ext.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/300/latin-ext.woff2
+skin/fonts/Source-Sans-Pro/300/latin.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/300/latin.woff2
+skin/fonts/Source-Sans-Pro/300/vietnamese.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/300/vietnamese.woff2
+skin/fonts/Source-Sans-Pro/400/cyrillic-ext.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/400/cyrillic-ext.woff2
+skin/fonts/Source-Sans-Pro/400/cyrillic.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/400/cyrillic.woff2
+skin/fonts/Source-Sans-Pro/400/greek-ext.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/400/greek-ext.woff2
+skin/fonts/Source-Sans-Pro/400/greek.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/400/greek.woff2
+skin/fonts/Source-Sans-Pro/400/latin-ext.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/400/latin-ext.woff2
+skin/fonts/Source-Sans-Pro/400/latin.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/400/latin.woff2
+skin/fonts/Source-Sans-Pro/400/vietnamese.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/400/vietnamese.woff2
+skin/fonts/Source-Sans-Pro/700/cyrillic-ext.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/700/cyrillic-ext.woff2
+skin/fonts/Source-Sans-Pro/700/cyrillic.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/700/cyrillic.woff2
+skin/fonts/Source-Sans-Pro/700/greek-ext.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/700/greek-ext.woff2
+skin/fonts/Source-Sans-Pro/700/greek.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/700/greek.woff2
+skin/fonts/Source-Sans-Pro/700/latin-ext.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/700/latin-ext.woff2
+skin/fonts/Source-Sans-Pro/700/latin.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/700/latin.woff2
+skin/fonts/Source-Sans-Pro/700/vietnamese.woff2 = adblockplusui/skin/fonts/Source-Sans-Pro/700/vietnamese.woff2
+skin/icons/abp-logo.svg = adblockplusui/skin/icons/abp-logo.svg
+skin/icons/alert.svg = adblockplusui/skin/icons/alert.svg
+skin/icons/android.svg = adblockplusui/skin/icons/android.svg
+skin/icons/apple.svg = adblockplusui/skin/icons/apple.svg
+skin/icons/attention.svg = adblockplusui/skin/icons/attention.svg
+skin/icons/block-element.svg = adblockplusui/skin/icons/block-element.svg
+skin/icons/checkbox.svg = adblockplusui/skin/icons/checkbox.svg
+skin/icons/checkmark.svg = adblockplusui/skin/icons/checkmark.svg
+skin/icons/code.svg = adblockplusui/skin/icons/code.svg
+skin/icons/copy.svg = adblockplusui/skin/icons/copy.svg
+skin/icons/critical.svg = adblockplusui/skin/icons/critical.svg
+skin/icons/delete.svg = adblockplusui/skin/icons/delete.svg
+skin/icons/error.svg = adblockplusui/skin/icons/error.svg
+skin/icons/facebook.svg = adblockplusui/skin/icons/facebook.svg
+skin/icons/gear.svg = adblockplusui/skin/icons/gear.svg
+skin/icons/globe.svg = adblockplusui/skin/icons/globe.svg
+skin/icons/hide.svg = adblockplusui/skin/icons/hide.svg
+skin/icons/highlight.svg = adblockplusui/skin/icons/highlight.svg
+skin/icons/iconOff.svg = adblockplusui/skin/icons/iconOff.svg
+skin/icons/iconOn.svg = adblockplusui/skin/icons/iconOn.svg
+skin/icons/info.svg = adblockplusui/skin/icons/info.svg
+skin/icons/radio.svg = adblockplusui/skin/icons/radio.svg
+skin/icons/reload.svg = adblockplusui/skin/icons/reload.svg
+skin/icons/report-issue.svg = adblockplusui/skin/icons/report-issue.svg
+skin/icons/toggle.svg = adblockplusui/skin/icons/toggle.svg
+skin/icons/tooltip.svg = adblockplusui/skin/icons/tooltip.svg
+skin/icons/trash.svg = adblockplusui/skin/icons/trash.svg
+skin/icons/twitter.svg = adblockplusui/skin/icons/twitter.svg
+skin/icons/weibo.svg = adblockplusui/skin/icons/weibo.svg
+skin/icons/first-run/checkmark-header.svg = adblockplusui/skin/icons/first-run/checkmark-header.svg
+skin/icons/first-run/checkmark.svg = adblockplusui/skin/icons/first-run/checkmark.svg
+skin/icons/first-run/lock.svg = adblockplusui/skin/icons/first-run/lock.svg
+skin/icons/first-run/rocket.svg = adblockplusui/skin/icons/first-run/rocket.svg
+skin/icons/updates/base-graphic.svg = adblockplusui/skin/icons/updates/base-graphic.svg
+skin/icons/updates/mobile.svg = adblockplusui/skin/icons/updates/mobile.svg
+skin/icons/updates/rocket.svg = adblockplusui/skin/icons/updates/rocket.svg
+skin/icons/updates/thumbs-up.svg = adblockplusui/skin/icons/updates/thumbs-up.svg
+skin/icons/web/navbar-logo.svg = adblockplusui/skin/icons/web/navbar-logo.svg
+
+skin/blade_icons/pending-referral.svg = adblockplusui/skin/blade_icons/pending-referral.svg
+skin/blade_assets/blade-background-all-other-screens.png = adblockplusui/skin/blade_assets/blade-background-all-other-screens.png
+skin/blade_assets/blade-background-get-started.png = adblockplusui/skin/blade_assets/blade-background-get-started.png
+skin/blade_assets/blade-logo.svg = adblockplusui/skin/blade_assets/blade-logo.svg
+skin/blade_assets/blade-powered-adbank-logo.svg = adblockplusui/skin/blade_assets/blade-powered-adbank-logo.svg
+skin/blade_assets/feed-coming-soon.png = adblockplusui/skin/blade_assets/feed-coming-soon.png
+skin/blade_assets/referrals-coming-soon.png = adblockplusui/skin/blade_assets/referrals-coming-soon.png
+skin/blade_assets/dashboard-coming-soon.png = adblockplusui/skin/blade_assets/dashboard-coming-soon.png
+skin/blade_assets/transfer-coming-soon.png = adblockplusui/skin/blade_assets/transfer-coming-soon.png
 
 [bundles]
 lib/adblockplus.js =
@@ -97,7 +170,7 @@ lib/adblockplus.js =
   lib/uninstall.js
   lib/csp.js
   lib/contentFiltering.js
-  bladeui/messageResponder.js
+  adblockplusui/lib/messageResponder.js
 include.preload.js =
   include.preload.js
   inject.preload.js
@@ -106,13 +179,15 @@ include.postload.js =
   composer.postload.js
 
 [import_locales]
-bladeui/locale/*/antiadblockInit.json = *
-bladeui/locale/*/common.json = *
-bladeui/locale/*/composer.json = *
-bladeui/locale/*/filter-validation.json = *
-bladeui/locale/*/first-run.json = *
-bladeui/locale/*/issue-reporter.json = *
-bladeui/locale/*/manifest.json = *
-bladeui/locale/*/notification-helper.json = *
-bladeui/locale/*/popup.json = *
-bladeui/locale/*/updates.json = *
+adblockplusui/locale/*/antiadblockInit.json = *
+adblockplusui/locale/*/common.json = *
+adblockplusui/locale/*/composer.json = *
+adblockplusui/locale/*/desktop-options.json = *
+adblockplusui/locale/*/devtools-panel.json = *
+adblockplusui/locale/*/filter-validation.json = *
+adblockplusui/locale/*/first-run.json = *
+adblockplusui/locale/*/issue-reporter.json = *
+adblockplusui/locale/*/manifest.json = *
+adblockplusui/locale/*/notification-helper.json = *
+adblockplusui/locale/*/popup.json = *
+adblockplusui/locale/*/updates.json = *

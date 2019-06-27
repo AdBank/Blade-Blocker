@@ -2,25 +2,25 @@
 inherit = metadata.chrome
 
 [general]
-app_id_release={d10d0bf8-f5b5-c8b4-a8b2-2b9879e08c5d}
-app_id_devbuild=devbuild@adblockplus.org
-devbuildUpdateURL=https://downloads.adblockplus.org/devbuilds/adblockplusfirefox/updates.json
-basename = adblockplusfirefox
+app_id_release=hello@adbank.network
+app_id_devbuild=hello@adbank.network
+basename = bladeblockerfirefox
 browserAction -= popup.html
 
 [compat]
 gecko = 51.0
 
+[contentScripts]
+document_start += include.postload.js
+document_end -= include.postload.js
+
 [mapping]
 mobile-options.html = adblockplusui/mobile-options.html
 mobile-options.js = adblockplusui/mobile-options.js
 skin/mobile-options.css = adblockplusui/skin/mobile-options.css
-skin/mobile/checkmark.svg = adblockplusui/skin/mobile/checkmark.svg
-skin/mobile/toggle.svg = adblockplusui/skin/mobile/toggle.svg
-skin/mobile/trash.svg = adblockplusui/skin/mobile/trash.svg
-
-[bundles]
-lib/adblockplus.js += lib/firefoxDataCleanup.js
+skin/icons/mobile/checkmark.svg = adblockplusui/skin/icons/mobile/checkmark.svg
+skin/icons/mobile/toggle.svg = adblockplusui/skin/icons/mobile/toggle.svg
+skin/icons/mobile/trash.svg = adblockplusui/skin/icons/mobile/trash.svg
 
 [import_locales]
 adblockplusui/locale/*/mobile-options.json = *

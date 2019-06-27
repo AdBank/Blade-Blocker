@@ -25,7 +25,7 @@ const {Downloader, Downloadable,
        MILLIS_IN_SECOND, MILLIS_IN_MINUTE,
        MILLIS_IN_HOUR, MILLIS_IN_DAY} = require("./downloader");
 const {Filter} = require("./filterClasses");
-const {FilterStorage} = require("./filterStorage");
+const {filterStorage} = require("./filterStorage");
 const {filterNotifier} = require("./filterNotifier");
 const {Prefs} = require("prefs");
 const {Subscription,
@@ -51,11 +51,6 @@ class Synchronizer
      */
     this._downloader = new Downloader(this._getDownloadables.bind(this),
                                       INITIAL_DELAY, CHECK_INTERVAL);
-    onShutdown.add(() =>
-    {
-      this._downloader.cancel();
-    });
-
     this._downloader.onExpirationChange = this._onExpirationChange.bind(this);
     this._downloader.onDownloadStarted = this._onDownloadStarted.bind(this);
     this._downloader.onDownloadSuccess = this._onDownloadSuccess.bind(this);
@@ -95,7 +90,7 @@ class Synchronizer
     if (!Prefs.subscriptions_autoupdate)
       return;
 
-    for (let subscription of FilterStorage.subscriptions)
+    for (let subscription of filterStorage.subscriptions())
     {
       if (subscription instanceof DownloadableSubscription)
         yield this._getDownloadable(subscription, false);
@@ -186,14 +181,14 @@ class Synchronizer
       subscription.disabled = oldSubscription.disabled;
       subscription.lastCheck = oldSubscription.lastCheck;
 
-      let listed = FilterStorage.knownSubscriptions.has(oldSubscription.url);
+      let listed = filterStorage.knownSubscriptions.has(oldSubscription.url);
       if (listed)
-        FilterStorage.removeSubscription(oldSubscription);
+        filterStorage.removeSubscription(oldSubscription);
 
       Subscription.knownSubscriptions.delete(oldSubscription.url);
 
       if (listed)
-        FilterStorage.addSubscription(subscription);
+        filterStorage.addSubscription(subscription);
     }
 
     // The download actually succeeded
@@ -259,19 +254,19 @@ class Synchronizer
 
     // Process filters
     lines.shift();
-    let filters = [];
+    let filterText = [];
     for (let line of lines)
     {
       line = Filter.normalize(line);
       if (line)
-        filters.push(Filter.fromText(line));
+        filterText.push(line);
     }
 
-    FilterStorage.updateSubscriptionFilters(subscription, filters);
+    filterStorage.updateSubscriptionFilters(subscription, filterText);
   }
 
-  _onDownloadError(downloadable, downloadURL, error, channelStatus,
-                   responseStatus, redirectCallback)
+  _onDownloadError(downloadable, downloadURL, error, responseStatus,
+                   redirectCallback)
   {
     let subscription = Subscription.fromURL(downloadable.url);
     subscription.lastDownload = Math.round(Date.now() / MILLIS_IN_SECOND);
@@ -298,27 +293,22 @@ class Synchronizer
                                           encodeURIComponent(downloadURL));
         fallbackURL = fallbackURL.replace(/%ERROR%/g,
                                           encodeURIComponent(error));
-        fallbackURL = fallbackURL.replace(/%CHANNELSTATUS%/g,
-                                          encodeURIComponent(channelStatus));
         fallbackURL = fallbackURL.replace(/%RESPONSESTATUS%/g,
                                           encodeURIComponent(responseStatus));
 
-        let request = new XMLHttpRequest();
-        request.mozBackgroundRequest = true;
-        request.open("GET", fallbackURL);
-        request.overrideMimeType("text/plain");
-        request.channel.loadFlags = request.channel.loadFlags |
-                                    request.channel.INHIBIT_CACHING |
-                                    request.channel.VALIDATE_ALWAYS;
-        request.addEventListener("load", ev =>
+        let initObj = {
+          cache: "no-store",
+          credentials: "omit",
+          referrer: "no-referrer"
+        };
+
+        fetch(fallbackURL, initObj).then(response => response.text())
+        .then(responseText =>
         {
-          if (onShutdown.done)
+          if (!filterStorage.knownSubscriptions.has(subscription.url))
             return;
 
-          if (!FilterStorage.knownSubscriptions.has(subscription.url))
-            return;
-
-          let match = /^(\d+)(?:\s+(\S+))?$/.exec(request.responseText);
+          let match = /^(\d+)(?:\s+(\S+))?$/.exec(responseText);
           if (match && match[1] == "301" &&    // Moved permanently
               match[2] && /^https?:\/\//i.test(match[2]))
           {
@@ -327,11 +317,10 @@ class Synchronizer
           else if (match && match[1] == "410") // Gone
           {
             let data = "[Adblock]\n" +
-              subscription.filters.map(f => f.text).join("\n");
+              [...subscription.filterText()].join("\n");
             redirectCallback("data:text/plain," + encodeURIComponent(data));
           }
-        }, false);
-        request.send(null);
+        });
       }
     }
   }
@@ -344,4 +333,4 @@ class Synchronizer
  */
 let synchronizer = new Synchronizer();
 
-exports.Synchronizer = synchronizer;
+exports.synchronizer = synchronizer;

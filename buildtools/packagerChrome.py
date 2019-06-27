@@ -177,7 +177,7 @@ def create_bundles(params, files, bundle_tests):
     # resolve paths. Going forward we should always use relative paths, once we
     # do that consistently this can be removed. See issues 5760, 5761 and 5762.
     resolve_paths = [os.path.join(base_extension_path, dir, 'lib')
-                     for dir in ['', 'adblockpluscore', 'bladeui']]
+                     for dir in ['', 'adblockpluscore', 'adblockplusui']]
 
     info_template = getTemplate(info_templates[params['type']])
     info_module = info_template.render(
@@ -207,12 +207,10 @@ def create_bundles(params, files, bundle_tests):
         })
 
     if bundle_tests:
-        qunit_path = os.path.join(base_extension_path, 'qunit')
-        qunit_files = ([os.path.join(qunit_path, 'common.js')] +
-                       glob.glob(os.path.join(qunit_path, 'tests', '*.js')))
+        test_paths = os.path.join(base_extension_path, 'qunit', 'tests', '*.js')
         configuration['bundles'].append({
             'bundle_name': 'qunit/tests.js',
-            'entry_points': qunit_files,
+            'entry_points': glob.glob(test_paths),
         })
 
     cmd = ['node', os.path.join(os.path.dirname(__file__), 'webpack_runner.js')]
@@ -276,7 +274,7 @@ def fix_translations_for_chrome(files):
 
     limits = {}
     manifest = json.loads(files['manifest.json'])
-    for key, limit in (('name', 45), ('description', 132), ('short_name', 45)):
+    for key, limit in (('name', 45), ('description', 132), ('short_name', 12)):
         match = re.search(r'__MSG_(\S+)__', manifest.get(key, ''))
         if match:
             limits[match.group(1)] = limit

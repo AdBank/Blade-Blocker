@@ -25,14 +25,14 @@
 const {Services} = Cu.import("resource://gre/modules/Services.jsm", {});
 const {XPCOMUtils} = Cu.import("resource://gre/modules/XPCOMUtils.jsm", {});
 
-const {FilterStorage} = require("./filterStorage");
+const {filterStorage} = require("./filterStorage");
 const {filterNotifier} = require("./filterNotifier");
 const {ElemHide} = require("./elemHide");
 const {ElemHideEmulation} = require("./elemHideEmulation");
 const {ElemHideExceptions} = require("./elemHideExceptions");
-const {Snippets} = require("./snippets");
+const {snippets} = require("./snippets");
 const {defaultMatcher} = require("./matcher");
-const {ActiveFilter, RegExpFilter,
+const {Filter, ActiveFilter, RegExpFilter,
        ElemHideBase, ElemHideFilter, ElemHideEmulationFilter,
        SnippetFilter} = require("./filterClasses");
 const {SpecialSubscription} = require("./subscriptionClasses");
@@ -51,7 +51,7 @@ let isDirty = 0;
 let FilterListener = {
   /**
    * Increases "dirty factor" of the filters and calls
-   * FilterStorage.saveToDisk() if it becomes 1 or more. Save is
+   * filterStorage.saveToDisk() if it becomes 1 or more. Save is
    * executed delayed to prevent multiple subsequent calls. If the
    * parameter is 0 it forces saving filters if any changes were
    * recorded after the previous save.
@@ -66,7 +66,7 @@ let FilterListener = {
     if (isDirty >= 1)
     {
       isDirty = 0;
-      FilterStorage.saveToDisk();
+      filterStorage.saveToDisk();
     }
   }
 };
@@ -81,7 +81,7 @@ let HistoryPurgeObserver = {
     if (topic == "browser:purge-session-history" &&
         Prefs.clearStatsOnHistoryPurge)
     {
-      FilterStorage.resetHitCounts();
+      filterStorage.resetHitCounts();
       FilterListener.setDirty(0); // Force saving to disk
 
       Prefs.recentReports = [];
@@ -108,7 +108,6 @@ function init()
   filterNotifier.on("subscription.removed", onSubscriptionRemoved);
   filterNotifier.on("subscription.disabled", onSubscriptionDisabled);
   filterNotifier.on("subscription.updated", onSubscriptionUpdated);
-  filterNotifier.on("subscription.moved", onGenericChange);
   filterNotifier.on("subscription.title", onGenericChange);
   filterNotifier.on("subscription.fixedTitle", onGenericChange);
   filterNotifier.on("subscription.homepage", onGenericChange);
@@ -119,15 +118,10 @@ function init()
   filterNotifier.on("load", onLoad);
   filterNotifier.on("save", onSave);
 
-  FilterStorage.loadFromDisk();
+  filterStorage.loadFromDisk();
 
   Services.obs.addObserver(HistoryPurgeObserver,
                            "browser:purge-session-history", true);
-  onShutdown.add(() =>
-  {
-    Services.obs.removeObserver(HistoryPurgeObserver,
-                                "browser:purge-session-history");
-  });
 }
 init();
 
@@ -135,15 +129,18 @@ init();
  * Notifies Matcher instances or ElemHide object about a new filter
  * if necessary.
  * @param {Filter} filter filter that has been added
+ * @param {?Array.<Subscription>} [subscriptions] subscriptions to which the
+ *   filter belongs
  */
-function addFilter(filter)
+function addFilter(filter, subscriptions = null)
 {
   if (!(filter instanceof ActiveFilter) || filter.disabled)
     return;
 
   let hasEnabled = false;
   let allowSnippets = false;
-  for (let subscription of filter.subscriptions())
+  for (let subscription of subscriptions ||
+                           filterStorage.subscriptions(filter.text))
   {
     if (!subscription.disabled)
     {
@@ -152,7 +149,6 @@ function addFilter(filter)
       // Allow snippets to be executed only by the circumvention lists or the
       // user's own filters.
       if (subscription.type == "circumvention" ||
-          subscription.url == "https://easylist-downloads.adblockplus.org/abp-filters-anti-cv.txt" ||
           subscription instanceof SpecialSubscription)
       {
         allowSnippets = true;
@@ -175,7 +171,7 @@ function addFilter(filter)
       ElemHideExceptions.add(filter);
   }
   else if (allowSnippets && filter instanceof SnippetFilter)
-    Snippets.add(filter);
+    snippets.add(filter);
 }
 
 /**
@@ -191,7 +187,7 @@ function removeFilter(filter)
   if (!filter.disabled)
   {
     let hasEnabled = false;
-    for (let subscription of filter.subscriptions())
+    for (let subscription of filterStorage.subscriptions(filter.text))
     {
       if (!subscription.disabled)
       {
@@ -215,32 +211,7 @@ function removeFilter(filter)
       ElemHideExceptions.remove(filter);
   }
   else if (filter instanceof SnippetFilter)
-    Snippets.remove(filter);
-}
-
-const primes = [101, 109, 131, 149, 163, 179, 193, 211, 229, 241];
-
-function addFilters(filters)
-{
-  // We add filters using pseudo-random ordering. Reason is that ElemHide will
-  // assign consecutive filter IDs that might be visible to the website. The
-  // randomization makes sure that no conclusion can be made about the actual
-  // filters applying there. We have ten prime numbers to use as iteration step,
-  // any of those can be chosen as long as the array length isn't divisible by
-  // it.
-  let len = filters.length;
-  if (!len)
-    return;
-
-  let current = (Math.random() * len) | 0;
-  let step;
-  do
-  {
-    step = primes[(Math.random() * primes.length) | 0];
-  } while (len % step == 0);
-
-  for (let i = 0; i < len; i++, current = (current + step) % len)
-    addFilter(filters[current]);
+    snippets.remove(filter);
 }
 
 function onSubscriptionAdded(subscription)
@@ -248,7 +219,10 @@ function onSubscriptionAdded(subscription)
   FilterListener.setDirty(1);
 
   if (!subscription.disabled)
-    addFilters(subscription.filters);
+  {
+    for (let text of subscription.filterText())
+      addFilter(Filter.fromText(text), [subscription]);
+  }
 }
 
 function onSubscriptionRemoved(subscription)
@@ -256,31 +230,43 @@ function onSubscriptionRemoved(subscription)
   FilterListener.setDirty(1);
 
   if (!subscription.disabled)
-    subscription.filters.forEach(removeFilter);
+  {
+    for (let text of subscription.filterText())
+      removeFilter(Filter.fromText(text));
+  }
 }
 
 function onSubscriptionDisabled(subscription, newValue)
 {
   FilterListener.setDirty(1);
 
-  if (FilterStorage.knownSubscriptions.has(subscription.url))
+  if (filterStorage.knownSubscriptions.has(subscription.url))
   {
     if (newValue == false)
-      addFilters(subscription.filters);
+    {
+      for (let text of subscription.filterText())
+        addFilter(Filter.fromText(text), [subscription]);
+    }
     else
-      subscription.filters.forEach(removeFilter);
+    {
+      for (let text of subscription.filterText())
+        removeFilter(Filter.fromText(text));
+    }
   }
 }
 
-function onSubscriptionUpdated(subscription, oldFilters)
+function onSubscriptionUpdated(subscription, textDelta)
 {
   FilterListener.setDirty(1);
 
   if (!subscription.disabled &&
-      FilterStorage.knownSubscriptions.has(subscription.url))
+      filterStorage.knownSubscriptions.has(subscription.url))
   {
-    oldFilters.forEach(removeFilter);
-    addFilters(subscription.filters);
+    for (let text of textDelta.removed)
+      removeFilter(Filter.fromText(text));
+
+    for (let text of textDelta.added)
+      addFilter(Filter.fromText(text), [subscription]);
   }
 }
 
@@ -336,11 +322,15 @@ function onLoad()
   ElemHide.clear();
   ElemHideEmulation.clear();
   ElemHideExceptions.clear();
-  Snippets.clear();
-  for (let subscription of FilterStorage.subscriptions)
+  snippets.clear();
+
+  for (let subscription of filterStorage.subscriptions())
   {
     if (!subscription.disabled)
-      addFilters(subscription.filters);
+    {
+      for (let text of subscription.filterText())
+        addFilter(Filter.fromText(text), [subscription]);
+    }
   }
 }
 

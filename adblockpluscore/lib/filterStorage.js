@@ -18,8 +18,8 @@
 "use strict";
 
 /**
- * @fileOverview FilterStorage class responsible for managing user's
- *               subscriptions and filters.
+ * @fileOverview <code>filterStorage</code> object responsible for managing the
+ * user's subscriptions and filters.
  */
 
 const {IO} = require("io");
@@ -34,73 +34,123 @@ const {INIParser} = require("./iniParser");
  * Version number of the filter storage file format.
  * @type {number}
  */
-let formatVersion = 5;
+const FORMAT_VERSION = 5;
 
 /**
- * This class reads user's filters from disk, manages them in memory
- * and writes them back.
- * @class
+ * {@link filterStorage} implementation.
  */
-let FilterStorage = exports.FilterStorage =
+class FilterStorage
 {
   /**
-   * Will be set to true after the initial loadFromDisk() call completes.
-   * @type {boolean}
+   * @hideconstructor
    */
-  initialized: false,
+  constructor()
+  {
+    /**
+     * Will be set to true after the initial {@link FilterStorage#loadFromDisk}
+     * call completes.
+     * @type {boolean}
+     */
+    this.initialized = false;
+
+    /**
+     * Will be set to <code>true</code> if no <code>patterns.ini</code> file
+     * exists.
+     * @type {boolean}
+     */
+    this.firstRun = false;
+
+    /**
+     * Map of properties listed in the filter storage file before the sections
+     * start. Right now this should be only the format version.
+     * @type {object}
+     */
+    this.fileProperties = Object.create(null);
+
+    /**
+     * Map of subscriptions already on the list, by their URL/identifier.
+     * @type {Map.<string,Subscription>}
+     */
+    this.knownSubscriptions = new Map();
+
+    /**
+     * Will be set to true if {@link FilterStorage#saveToDisk} is running
+     * (reentrance protection).
+     * @type {boolean}
+     * @private
+     */
+    this._saving = false;
+
+    /**
+     * Will be set to true if a {@link FilterStorage#saveToDisk} call arrives
+     * while {@link FilterStorage#saveToDisk} is already running (delayed
+     * execution).
+     * @type {boolean}
+     * @private
+     */
+    this._needsSave = false;
+  }
 
   /**
-   * Version number of the patterns.ini format used.
+   * The version number of the <code>patterns.ini</code> format used.
    * @type {number}
    */
   get formatVersion()
   {
-    return formatVersion;
-  },
+    return FORMAT_VERSION;
+  }
 
   /**
-   * File containing the filter list
+   * The file containing the subscriptions.
    * @type {string}
    */
   get sourceFile()
   {
     return "patterns.ini";
-  },
+  }
 
   /**
-   * Will be set to true if no patterns.ini file exists.
-   * @type {boolean}
+   * Yields subscriptions in the storage.
+   * @param {?string} [filterText] The filter text for which to look. If
+   *   specified, the function yields only those subscriptions that contain the
+   *   given filter text. By default the function yields all subscriptions.
+   * @yields {Subscription}
    */
-  firstRun: false,
+  *subscriptions(filterText = null)
+  {
+    if (filterText == null)
+    {
+      yield* this.knownSubscriptions.values();
+    }
+    else
+    {
+      for (let subscription of this.knownSubscriptions.values())
+      {
+        if (subscription.hasFilterText(filterText))
+          yield subscription;
+      }
+    }
+  }
 
   /**
-   * Map of properties listed in the filter storage file before the sections
-   * start. Right now this should be only the format version.
+   * The number of subscriptions in the storage.
+   * @type {number}
    */
-  fileProperties: Object.create(null),
-
-  /**
-   * List of filter subscriptions containing all filters
-   * @type {Subscription[]}
-   */
-  subscriptions: [],
-
-  /**
-   * Map of subscriptions already on the list, by their URL/identifier
-   * @type {Map.<string,Subscription>}
-   */
-  knownSubscriptions: new Map(),
+  get subscriptionCount()
+  {
+    return this.knownSubscriptions.size;
+  }
 
   /**
    * Finds the filter group that a filter should be added to by default. Will
-   * return null if this group doesn't exist yet.
+   * return <code>null</code> if this group doesn't exist yet.
    * @param {Filter} filter
-   * @return {?SpecialSubscription}
+   * @returns {?SpecialSubscription}
    */
   getGroupForFilter(filter)
   {
     let generalSubscription = null;
-    for (let subscription of FilterStorage.subscriptions)
+    for (let subscription of this.knownSubscriptions.values())
     {
       if (subscription instanceof SpecialSubscription && !subscription.disabled)
       {
@@ -117,105 +167,65 @@ let FilterStorage = exports.FilterStorage =
       }
     }
     return generalSubscription;
-  },
+  }
 
   /**
-   * Adds a filter subscription to the list
-   * @param {Subscription} subscription filter subscription to be added
+   * Adds a subscription to the storage.
+   * @param {Subscription} subscription The subscription to be added.
    */
   addSubscription(subscription)
   {
-    if (FilterStorage.knownSubscriptions.has(subscription.url))
+    if (this.knownSubscriptions.has(subscription.url))
       return;
 
-    FilterStorage.subscriptions.push(subscription);
-    FilterStorage.knownSubscriptions.set(subscription.url, subscription);
-    addSubscriptionFilters(subscription);
+    this.knownSubscriptions.set(subscription.url, subscription);
 
     filterNotifier.emit("subscription.added", subscription);
-  },
+  }
 
   /**
-   * Removes a filter subscription from the list
-   * @param {Subscription} subscription filter subscription to be removed
+   * Removes a subscription from the storage.
+   * @param {Subscription} subscription The subscription to be removed.
    */
   removeSubscription(subscription)
   {
-    for (let i = 0; i < FilterStorage.subscriptions.length; i++)
-    {
-      if (FilterStorage.subscriptions[i].url == subscription.url)
-      {
-        removeSubscriptionFilters(subscription);
-
-        FilterStorage.subscriptions.splice(i--, 1);
-        FilterStorage.knownSubscriptions.delete(subscription.url);
-
-        // This should be the last remaining reference to the Subscription
-        // object.
-        Subscription.knownSubscriptions.delete(subscription.url);
-
-        filterNotifier.emit("subscription.removed", subscription);
-        return;
-      }
-    }
-  },
-
-  /**
-   * Moves a subscription in the list to a new position.
-   * @param {Subscription} subscription filter subscription to be moved
-   * @param {Subscription} [insertBefore] filter subscription to insert before
-   *        (if omitted the subscription will be put at the end of the list)
-   */
-  moveSubscription(subscription, insertBefore)
-  {
-    let currentPos = FilterStorage.subscriptions.indexOf(subscription);
-    if (currentPos < 0)
+    if (!this.knownSubscriptions.has(subscription.url))
       return;
 
-    let newPos = -1;
-    if (insertBefore)
-      newPos = FilterStorage.subscriptions.indexOf(insertBefore);
+    this.knownSubscriptions.delete(subscription.url);
 
-    if (newPos < 0)
-      newPos = FilterStorage.subscriptions.length;
+    // This should be the last remaining reference to the Subscription
+    // object.
+    Subscription.knownSubscriptions.delete(subscription.url);
 
-    if (currentPos < newPos)
-      newPos--;
-    if (currentPos == newPos)
-      return;
-
-    FilterStorage.subscriptions.splice(currentPos, 1);
-    FilterStorage.subscriptions.splice(newPos, 0, subscription);
-    filterNotifier.emit("subscription.moved", subscription);
-  },
+    filterNotifier.emit("subscription.removed", subscription);
+  }
 
   /**
-   * Replaces the list of filters in a subscription by a new list
-   * @param {Subscription} subscription filter subscription to be updated
-   * @param {Filter[]} filters new filter list
+   * Replaces the list of filters in a subscription with a new list.
+   * @param {Subscription} subscription The subscription to be updated.
+   * @param {Array.<string>} filterText The new filter text.
    */
-  updateSubscriptionFilters(subscription, filters)
+  updateSubscriptionFilters(subscription, filterText)
   {
-    removeSubscriptionFilters(subscription);
-    let oldFilters = subscription.filters;
-    subscription.filters = filters;
-    addSubscriptionFilters(subscription);
-    filterNotifier.emit("subscription.updated", subscription, oldFilters);
-  },
+    filterNotifier.emit("subscription.updated", subscription,
+                        subscription.updateFilterText(filterText));
+  }
 
   /**
-   * Adds a user-defined filter to the list
+   * Adds a user-defined filter to the storage.
    * @param {Filter} filter
-   * @param {SpecialSubscription} [subscription]
-   *   particular group that the filter should be added to
-   * @param {number} [position]
-   *   position within the subscription at which the filter should be added
+   * @param {?SpecialSubscription} [subscription] The subscription that the
+   *   filter should be added to.
+   * @param {number} [position] The position within the subscription at which
+   *   the filter should be added. If not specified, the filter is added at the
+   *   end of the subscription.
    */
   addFilter(filter, subscription, position)
   {
     if (!subscription)
     {
-      for (let currentSubscription of filter.subscriptions())
+      for (let currentSubscription of this.subscriptions(filter.text))
       {
         if (currentSubscription instanceof SpecialSubscription &&
             !currentSubscription.disabled)
@@ -223,7 +233,7 @@ let FilterStorage = exports.FilterStorage =
           return;   // No need to add
         }
       }
-      subscription = FilterStorage.getGroupForFilter(filter);
+      subscription = this.getGroupForFilter(filter);
     }
     if (!subscription)
     {
@@ -234,26 +244,26 @@ let FilterStorage = exports.FilterStorage =
     }
 
     if (typeof position == "undefined")
-      position = subscription.filters.length;
+      position = subscription.filterCount;
 
-    filter.addSubscription(subscription);
-    subscription.filters.splice(position, 0, filter);
+    subscription.insertFilterAt(filter, position);
     filterNotifier.emit("filter.added", filter, subscription, position);
-  },
+  }
 
   /**
-   * Removes a user-defined filter from the list
+   * Removes a user-defined filter from the storage.
    * @param {Filter} filter
-   * @param {SpecialSubscription} [subscription] a particular filter group that
-   *      the filter should be removed from (if ommited will be removed from all
-   *      subscriptions)
-   * @param {number} [position]  position inside the filter group at which the
-   *      filter should be removed (if ommited all instances will be removed)
+   * @param {?SpecialSubscription} [subscription] The subscription that the
+   *   filter should be removed from. If not specified, the filter will be
+   *   removed from all subscriptions.
+   * @param {number} [position] The position within the subscription at which
+   *   the filter should be removed. If not specified, all instances of the
+   *   filter will be removed.
    */
   removeFilter(filter, subscription, position)
   {
     let subscriptions = (
-      subscription ? [subscription] : filter.subscriptions()
+      subscription ? [subscription] : this.subscriptions(filter.text)
     );
     for (let currentSubscription of subscriptions)
     {
@@ -265,7 +275,7 @@ let FilterStorage = exports.FilterStorage =
           let index = -1;
           do
           {
-            index = currentSubscription.filters.indexOf(filter, index + 1);
+            index = currentSubscription.findFilterIndex(filter, index + 1);
             if (index >= 0)
               positions.push(index);
           } while (index >= 0);
@@ -276,48 +286,49 @@ let FilterStorage = exports.FilterStorage =
         for (let j = positions.length - 1; j >= 0; j--)
         {
           let currentPosition = positions[j];
-          if (currentSubscription.filters[currentPosition] == filter)
+          let currentFilterText =
+            currentSubscription.filterTextAt(currentPosition);
+          if (currentFilterText && currentFilterText == filter.text)
           {
-            currentSubscription.filters.splice(currentPosition, 1);
-            if (currentSubscription.filters.indexOf(filter) < 0)
-              filter.removeSubscription(currentSubscription);
+            currentSubscription.deleteFilterAt(currentPosition);
             filterNotifier.emit("filter.removed", filter, currentSubscription,
                                 currentPosition);
           }
         }
       }
     }
-  },
+  }
 
   /**
-   * Moves a user-defined filter to a new position
+   * Moves a user-defined filter to a new position.
    * @param {Filter} filter
-   * @param {SpecialSubscription} subscription filter group where the filter is
-   *                                           located
-   * @param {number} oldPosition current position of the filter
-   * @param {number} newPosition new position of the filter
+   * @param {SpecialSubscription} subscription The subscription where the
+   *   filter is located.
+   * @param {number} oldPosition The current position of the filter.
+   * @param {number} newPosition The new position of the filter.
    */
   moveFilter(filter, subscription, oldPosition, newPosition)
   {
-    if (!(subscription instanceof SpecialSubscription) ||
-        subscription.filters[oldPosition] != filter)
-    {
+    if (!(subscription instanceof SpecialSubscription))
       return;
-    }
+
+    let currentFilterText = subscription.filterTextAt(oldPosition);
+    if (!currentFilterText || currentFilterText != filter.text)
+      return;
 
     newPosition = Math.min(Math.max(newPosition, 0),
-                           subscription.filters.length - 1);
+                           subscription.filterCount - 1);
     if (oldPosition == newPosition)
       return;
 
-    subscription.filters.splice(oldPosition, 1);
-    subscription.filters.splice(newPosition, 0, filter);
+    subscription.deleteFilterAt(oldPosition);
+    subscription.insertFilterAt(filter, newPosition);
     filterNotifier.emit("filter.moved", filter, subscription, oldPosition,
                         newPosition);
-  },
+  }
 
   /**
-   * Increases the hit count for a filter by one
+   * Increases the hit count for a filter by one.
    * @param {Filter} filter
    */
   increaseHitCount(filter)
@@ -327,12 +338,12 @@ let FilterStorage = exports.FilterStorage =
 
     filter.hitCount++;
     filter.lastHit = Date.now();
-  },
+  }
 
   /**
-   * Resets hit count for some filters
-   * @param {Filter[]} filters  filters to be reset, if null all filters will
-   *                            be reset
+   * Resets hit count for some filters.
+   * @param {?Array.<Filter>} [filters] The filters to be reset. If not
+   *   specified, all filters will be reset.
    */
   resetHitCounts(filters)
   {
@@ -343,7 +354,7 @@ let FilterStorage = exports.FilterStorage =
       filter.hitCount = 0;
       filter.lastHit = 0;
     }
-  },
+  }
 
   /**
    * @callback TextSink
@@ -352,13 +363,12 @@ let FilterStorage = exports.FilterStorage =
 
   /**
    * Allows importing previously serialized filter data.
-   * @param {boolean} silent
-   *    If true, no "load" notification will be sent out.
-   * @return {TextSink}
-   *    Function to be called for each line of data. Calling it with null as
-   *    parameter finalizes the import and replaces existing data. No changes
-   *    will be applied before finalization, so import can be "aborted" by
-   *    forgetting this callback.
+   * @param {boolean} silent If <code>true</code>, no "load" notification will
+   *   be sent out.
+   * @returns {TextSink} The function to be called for each line of data.
+   *   Calling it with <code>null</code> as the argument finalizes the import
+   *   and replaces existing data. No changes will be applied before
+   *   finalization, so import can be "aborted" by forgetting this callback.
    */
   importData(silent)
   {
@@ -373,7 +383,6 @@ let FilterStorage = exports.FilterStorage =
           knownSubscriptions.set(subscription.url, subscription);
 
         this.fileProperties = parser.fileProperties;
-        this.subscriptions = parser.subscriptions;
         this.knownSubscriptions = knownSubscriptions;
         Filter.knownFilters = parser.knownFilters;
         Subscription.knownSubscriptions = parser.knownSubscriptions;
@@ -382,11 +391,11 @@ let FilterStorage = exports.FilterStorage =
           filterNotifier.emit("load");
       }
     };
-  },
+  }
 
   /**
-   * Loads all subscriptions from the disk.
-   * @return {Promise} promise resolved or rejected when loading is complete
+   * Loads all subscriptions from disk.
+   * @returns {Promise} A promise resolved or rejected when loading is complete.
    */
   loadFromDisk()
   {
@@ -394,7 +403,7 @@ let FilterStorage = exports.FilterStorage =
     {
       return this.restoreBackup(backupIndex, true).then(() =>
       {
-        if (this.subscriptions.length == 0)
+        if (this.knownSubscriptions.size == 0)
           return tryBackup(backupIndex + 1);
       }).catch(error =>
       {
@@ -414,7 +423,7 @@ let FilterStorage = exports.FilterStorage =
       return IO.readFromFile(this.sourceFile, parser).then(() =>
       {
         parser(null);
-        if (this.subscriptions.length == 0)
+        if (this.knownSubscriptions.size == 0)
         {
           // No filter subscriptions in the file, this isn't right.
           throw new Error("No data in the file");
@@ -429,27 +438,28 @@ let FilterStorage = exports.FilterStorage =
       this.initialized = true;
       filterNotifier.emit("load");
     });
-  },
+  }
 
   /**
-   * Constructs the file name for a patterns.ini backup.
-   * @param {number} backupIndex
-   *    number of the backup file (1 being the most recent)
-   * @return {string} backup file name
+   * Constructs the file name for a <code>patterns.ini</code> backup.
+   * @param {number} backupIndex Number of the backup file (1 being the most
+   *   recent).
+   * @returns {string} Backup file name.
    */
   getBackupName(backupIndex)
   {
     let [name, extension] = this.sourceFile.split(".", 2);
     return (name + "-backup" + backupIndex + "." + extension);
-  },
+  }
 
   /**
    * Restores an automatically created backup.
-   * @param {number} backupIndex
-   *    number of the backup to restore (1 being the most recent)
-   * @param {boolean} silent
-   *    If true, no "load" notification will be sent out.
-   * @return {Promise} promise resolved or rejected when restoring is complete
+   * @param {number} backupIndex Number of the backup to restore (1 being the
+   *   most recent).
+   * @param {boolean} silent If <code>true</code>, no "load" notification will
+   *   be sent out.
+   * @returns {Promise} A promise resolved or rejected when restoration is
+   *   complete.
    */
   restoreBackup(backupIndex, silent)
   {
@@ -460,73 +470,55 @@ let FilterStorage = exports.FilterStorage =
       parser(null);
       return this.saveToDisk();
     });
-  },
+  }
 
   /**
    * Generator serializing filter data and yielding it line by line.
+   * @yields {string}
    */
   *exportData()
   {
     // Do not persist external subscriptions
-    let subscriptions = this.subscriptions.filter(
-      s => !(s instanceof ExternalSubscription)
-    );
+    let subscriptions = [];
+    for (let subscription of this.subscriptions())
+    {
+      if (!(subscription instanceof ExternalSubscription) &&
+          !(subscription instanceof SpecialSubscription &&
+            subscription.filterCount == 0))
+      {
+        subscriptions.push(subscription);
+      }
+    }
 
     yield "# Adblock Plus preferences";
-    yield "version=" + formatVersion;
+    yield "version=" + this.formatVersion;
 
     let saved = new Set();
-    let buf = [];
 
     // Save subscriptions
     for (let subscription of subscriptions)
     {
-      yield "";
-
-      subscription.serialize(buf);
-      if (subscription.filters.length)
-      {
-        buf.push("", "[Subscription filters]");
-        subscription.serializeFilters(buf);
-      }
-      for (let line of buf)
-        yield line;
-      buf.splice(0);
+      yield* subscription.serialize();
+      yield* subscription.serializeFilters();
     }
 
     // Save filter data
     for (let subscription of subscriptions)
     {
-      for (let filter of subscription.filters)
+      for (let text of subscription.filterText())
       {
-        if (!saved.has(filter.text))
+        if (!saved.has(text))
         {
-          filter.serialize(buf);
-          saved.add(filter.text);
-          for (let line of buf)
-            yield line;
-          buf.splice(0);
+          yield* Filter.fromText(text).serialize();
+          saved.add(text);
         }
       }
     }
-  },
+  }
 
   /**
-   * Will be set to true if saveToDisk() is running (reentrance protection).
-   * @type {boolean}
-   */
-  _saving: false,
-
-  /**
-   * Will be set to true if a saveToDisk() call arrives while saveToDisk() is
-   * already running (delayed execution).
-   * @type {boolean}
-   */
-  _needsSave: false,
-
-  /**
-   * Saves all subscriptions back to disk
-   * @return {Promise} promise resolved or rejected when saving is complete
+   * Saves all subscriptions back to disk.
+   * @returns {Promise} A promise resolved or rejected when saving is complete.
    */
   saveToDisk()
   {
@@ -610,7 +602,7 @@ let FilterStorage = exports.FilterStorage =
         this.saveToDisk();
       }
     });
-  },
+  }
 
   /**
    * @typedef FileInfo
@@ -621,7 +613,7 @@ let FilterStorage = exports.FilterStorage =
 
   /**
    * Returns a promise resolving in a list of existing backup files.
-   * @return {Promise.<FileInfo[]>}
+   * @returns {Promise.<Array.<FileInfo>>}
    */
   getBackupFiles()
   {
@@ -649,32 +641,12 @@ let FilterStorage = exports.FilterStorage =
 
     return checkBackupFile(1);
   }
-};
-
-/**
- * Joins subscription's filters to the subscription without any notifications.
- * @param {Subscription} subscription
- *   filter subscription that should be connected to its filters
- */
-function addSubscriptionFilters(subscription)
-{
-  if (!FilterStorage.knownSubscriptions.has(subscription.url))
-    return;
-
-  for (let filter of subscription.filters)
-    filter.addSubscription(subscription);
 }
 
 /**
- * Removes subscription's filters from the subscription without any
- * notifications.
- * @param {Subscription} subscription filter subscription to be removed
+ * Reads the user's filters from disk, manages them in memory, and writes them
+ * back to disk.
  */
-function removeSubscriptionFilters(subscription)
-{
-  if (!FilterStorage.knownSubscriptions.has(subscription.url))
-    return;
+let filterStorage = new FilterStorage();
 
-  for (let filter of subscription.filters)
-    filter.removeSubscription(subscription);
-}
+exports.filterStorage = filterStorage;

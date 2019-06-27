@@ -21,10 +21,24 @@
  * @fileOverview Definition of Subscription class and its subclasses.
  */
 
+const {recommendations} = require("./recommendations");
 const {ActiveFilter, BlockingFilter,
        WhitelistFilter, ElemHideBase} = require("./filterClasses");
 const {filterNotifier} = require("./filterNotifier");
 const {extend} = require("./coreUtils");
+
+/**
+ * Subscription types by URL.
+ *
+ * @type {Map.<string, string>}
+ */
+let typesByURL = new Map(
+  (function*()
+  {
+    for (let {type, url} of recommendations())
+      yield [url, type];
+  })()
+);
 
 /**
  * Abstract base class for filter subscriptions
@@ -36,9 +50,12 @@ const {extend} = require("./coreUtils");
 function Subscription(url, title)
 {
   this.url = url;
-  this.filters = [];
+
+  this._filterText = [];
+
   if (title)
     this._title = title;
+
   Subscription.knownSubscriptions.set(url, this);
 }
 exports.Subscription = Subscription;
@@ -51,17 +68,30 @@ Subscription.prototype =
    */
   url: null,
 
+  _type: null,
+
   /**
    * Type of the subscription
    * @type {?string}
    */
-  type: null,
+  get type()
+  {
+    return this._type;
+  },
 
   /**
-   * Filters contained in the filter subscription
-   * @type {Filter[]}
+   * Filter text contained in the filter subscription.
+   * @type {Array.<string>}
+   * @private
    */
-  filters: null,
+  _filterText: null,
+
+  /**
+   * A searchable index of filter text in the filter subscription.
+   * @type {?Set.<string>}
+   * @private
+   */
+  _filterTextIndex: null,
 
   _title: null,
   _fixedTitle: false,
@@ -125,35 +155,178 @@ Subscription.prototype =
   },
 
   /**
-   * Serializes the subscription to an array of strings for writing
-   * out on the disk.
-   * @param {string[]} buffer  buffer to push the serialization results into
+   * The number of filters in the subscription.
+   * @type {number}
    */
-  serialize(buffer)
+  get filterCount()
   {
-    buffer.push("[Subscription]");
-    buffer.push("url=" + this.url);
-    if (this.type)
-      buffer.push("type=" + this.type);
-    if (this._title)
-      buffer.push("title=" + this._title);
-    if (this._fixedTitle)
-      buffer.push("fixedTitle=true");
-    if (this._disabled)
-      buffer.push("disabled=true");
+    return this._filterText.length;
   },
 
-  serializeFilters(buffer)
+  /**
+   * Returns an iterator that yields the text for each filter in the
+   * subscription.
+   * @returns {Iterator.<string>}
+   */
+  filterText()
   {
-    for (let filter of this.filters)
-      buffer.push(filter.text.replace(/\[/g, "\\["));
+    return this._filterText[Symbol.iterator]();
+  },
+
+  /**
+   * Checks whether the subscription has the given filter text.
+   * @param {string} filterText
+   * @returns {boolean}
+   * @package
+   */
+  hasFilterText(filterText)
+  {
+    if (!this._filterTextIndex)
+      this._filterTextIndex = new Set(this._filterText);
+
+    return this._filterTextIndex.has(filterText);
+  },
+
+  /**
+   * Returns the filter text at the given 0-based index.
+   * @param {number} index
+   * @returns {?Filter}
+   */
+  filterTextAt(index)
+  {
+    return this._filterText[index] || null;
+  },
+
+  /**
+   * Returns the 0-based index of the given filter.
+   * @param {Filter} filter
+   * @param {number} [fromIndex] The index from which to start the search.
+   * @return {number}
+   */
+  findFilterIndex(filter, fromIndex = 0)
+  {
+    return this._filterText.indexOf(filter.text, fromIndex);
+  },
+
+  /**
+   * Removes all filters from the subscription.
+   */
+  clearFilters()
+  {
+    this._filterText = [];
+    this._filterTextIndex = null;
+  },
+
+  /**
+   * Adds a filter to the subscription.
+   * @param {Filter} filter
+   */
+  addFilter(filter)
+  {
+    this._filterText.push(filter.text);
+    this._filterTextIndex = null;
+  },
+
+  /**
+   * Adds a filter to the subscription.
+   * @param {string} filterText
+   */
+  addFilterText(filterText)
+  {
+    this._filterText.push(filterText);
+    this._filterTextIndex = null;
+  },
+
+  /**
+   * Inserts a filter into the subscription.
+   * @param {Filter} filter
+   * @param {number} index The index at which to insert the filter.
+   */
+  insertFilterAt(filter, index)
+  {
+    this._filterText.splice(index, 0, filter.text);
+    this._filterTextIndex = null;
+  },
+
+  /**
+   * Deletes a filter from the subscription.
+   * @param {number} index The index at which to delete the filter.
+   */
+  deleteFilterAt(index)
+  {
+    // Ignore index if out of bounds on the negative side, for consistency.
+    if (index < 0)
+      return;
+
+    this._filterText.splice(index, 1);
+    this._filterTextIndex = null;
+  },
+
+  /**
+   * Updates the filter text of the subscription.
+   * @param {Array.<string>} filterText The new filter text.
+   * @returns {{added: Array.<string>, removed: Array.<string>}} An object
+   *   containing two lists of the text of added and removed filters
+   *   respectively.
+   * @package
+   */
+  updateFilterText(filterText)
+  {
+    let added = [];
+    let removed = [];
+
+    let filterTextIndex = this._filterTextIndex || new Set(this._filterText);
+    for (let text of filterText)
+    {
+      if (!filterTextIndex.has(text))
+        added.push(text);
+    }
+
+    filterTextIndex = new Set(filterText);
+    for (let text of this._filterText)
+    {
+      if (!filterTextIndex.has(text))
+        removed.push(text);
+    }
+
+    this._filterText = [...filterText];
+    this._filterTextIndex = null;
+
+    return {added, removed};
+  },
+
+  /**
+   * Serializes the subscription for writing out on disk.
+   * @yields {string}
+   */
+  *serialize()
+  {
+    let {url, _title, _fixedTitle, _disabled} = this;
+
+    yield "[Subscription]";
+    yield "url=" + url;
+
+    if (_title)
+      yield "title=" + _title;
+    if (_fixedTitle)
+      yield "fixedTitle=true";
+    if (_disabled)
+      yield "disabled=true";
+  },
+
+  *serializeFilters()
+  {
+    let {_filterText} = this;
+
+    yield "[Subscription filters]";
+
+    for (let text of _filterText)
+      yield text.replace(/\[/g, "\\[");
   },
 
   toString()
   {
-    let buffer = [];
-    this.serialize(buffer);
-    return buffer.join("\n");
+    return [...this.serialize()].join("\n");
   }
 };
 
@@ -177,7 +350,16 @@ Subscription.fromURL = function(url)
     return subscription;
 
   if (url[0] != "~")
-    return new DownloadableSubscription(url, null);
+  {
+    subscription = new DownloadableSubscription(url, null);
+
+    let type = typesByURL.get(url);
+    if (typeof type != "undefined")
+      subscription._type = type;
+
+    return subscription;
+  }
+
   return new SpecialSubscription(url);
 };
 
@@ -196,8 +378,6 @@ Subscription.fromObject = function(obj)
   {
     // URL is valid - this is a downloadable subscription
     result = new DownloadableSubscription(obj.url, obj.title);
-    if ("type" in obj)
-      result.type = obj.type;
     if ("downloadStatus" in obj)
       result._downloadStatus = obj.downloadStatus;
     if ("lastSuccess" in obj)
@@ -269,7 +449,7 @@ SpecialSubscription.prototype = extend(Subscription, {
       {
         if (filter instanceof SpecialSubscription.defaultsMap.get(type))
           return true;
-        if (!(filter instanceof ActiveFilter) && type == "blacklist")
+        if (!(filter instanceof ActiveFilter) && type == "blocking")
           return true;
       }
     }
@@ -281,19 +461,21 @@ SpecialSubscription.prototype = extend(Subscription, {
    * See Subscription.serialize()
    * @inheritdoc
    */
-  serialize(buffer)
+  *serialize()
   {
-    Subscription.prototype.serialize.call(this, buffer);
-    if (this.defaults && this.defaults.length)
+    let {defaults, _lastDownload} = this;
+
+    yield* Subscription.prototype.serialize.call(this);
+
+    if (defaults)
     {
-      buffer.push("defaults=" +
-        this.defaults.filter(
-          type => SpecialSubscription.defaultsMap.has(type)
-        ).join(" ")
-      );
+      yield "defaults=" +
+            defaults.filter(
+              type => SpecialSubscription.defaultsMap.has(type)
+            ).join(" ");
     }
-    if (this._lastDownload)
-      buffer.push("lastDownload=" + this._lastDownload);
+    if (_lastDownload)
+      yield "lastDownload=" + _lastDownload;
   }
 });
 
@@ -327,7 +509,7 @@ SpecialSubscription.create = function(title)
 SpecialSubscription.createForFilter = function(filter)
 {
   let subscription = SpecialSubscription.create();
-  subscription.filters.push(filter);
+  subscription.addFilter(filter);
   for (let [type, class_] of SpecialSubscription.defaultsMap)
   {
     if (filter instanceof class_)
@@ -399,13 +581,16 @@ RegularSubscription.prototype = extend(Subscription, {
    * See Subscription.serialize()
    * @inheritdoc
    */
-  serialize(buffer)
+  *serialize()
   {
-    Subscription.prototype.serialize.call(this, buffer);
-    if (this._homepage)
-      buffer.push("homepage=" + this._homepage);
-    if (this._lastDownload)
-      buffer.push("lastDownload=" + this._lastDownload);
+    let {_homepage, _lastDownload} = this;
+
+    yield* Subscription.prototype.serialize.call(this);
+
+    if (_homepage)
+      yield "homepage=" + _homepage;
+    if (_lastDownload)
+      yield "lastDownload=" + _lastDownload;
   }
 });
 
@@ -427,7 +612,7 @@ ExternalSubscription.prototype = extend(RegularSubscription, {
    * See Subscription.serialize()
    * @inheritdoc
    */
-  serialize(buffer)
+  *serialize() // eslint-disable-line require-yield
   {
     throw new Error(
       "Unexpected call, external subscriptions should not be serialized"
@@ -552,26 +737,31 @@ DownloadableSubscription.prototype = extend(RegularSubscription, {
    * See Subscription.serialize()
    * @inheritdoc
    */
-  serialize(buffer)
+  *serialize()
   {
-    RegularSubscription.prototype.serialize.call(this, buffer);
-    if (this.downloadStatus)
-      buffer.push("downloadStatus=" + this.downloadStatus);
-    if (this.lastSuccess)
-      buffer.push("lastSuccess=" + this.lastSuccess);
-    if (this.lastCheck)
-      buffer.push("lastCheck=" + this.lastCheck);
-    if (this.expires)
-      buffer.push("expires=" + this.expires);
-    if (this.softExpiration)
-      buffer.push("softExpiration=" + this.softExpiration);
-    if (this.errors)
-      buffer.push("errors=" + this.errors);
-    if (this.version)
-      buffer.push("version=" + this.version);
-    if (this.requiredVersion)
-      buffer.push("requiredVersion=" + this.requiredVersion);
-    if (this.downloadCount)
-      buffer.push("downloadCount=" + this.downloadCount);
+    let {downloadStatus, lastSuccess, lastCheck, expires,
+         softExpiration, errors, version, requiredVersion,
+         downloadCount} = this;
+
+    yield* RegularSubscription.prototype.serialize.call(this);
+
+    if (downloadStatus)
+      yield "downloadStatus=" + downloadStatus;
+    if (lastSuccess)
+      yield "lastSuccess=" + lastSuccess;
+    if (lastCheck)
+      yield "lastCheck=" + lastCheck;
+    if (expires)
+      yield "expires=" + expires;
+    if (softExpiration)
+      yield "softExpiration=" + softExpiration;
+    if (errors)
+      yield "errors=" + errors;
+    if (version)
+      yield "version=" + version;
+    if (requiredVersion)
+      yield "requiredVersion=" + requiredVersion;
+    if (downloadCount)
+      yield "downloadCount=" + downloadCount;
   }
 });

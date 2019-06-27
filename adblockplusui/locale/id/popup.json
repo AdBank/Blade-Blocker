@@ -1,0 +1,27 @@
+{
+  "easy_create_filter": {
+    "message": "Blokir elemen"
+  },
+  "options_short": {
+    "message": "Pilihan"
+  },
+  "overlay_notification_closing_button_optout": {
+    "message": "Hentikan menampilkan pemberitahuan"
+  },
+  "stats_label_page": {
+    "message": "<strong>$number$</strong> pada halaman ini",
+    "placeholders": {
+      "number": {
+        "content": "$1"
+      }
+    }
+  },
+  "stats_label_total": {
+    "message": "<strong>$number$</strong> totalnya",
+    "placeholders": {
+      "number": {
+        "content": "$1"
+      }
+    }
+  }
+}

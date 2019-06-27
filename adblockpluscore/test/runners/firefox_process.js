@@ -30,12 +30,7 @@ const FIREFOX_VERSION = "57.0";
 
 function runScript(firefoxPath, script, scriptName, scriptArgs)
 {
-  let binary = new firefox.Binary(firefoxPath);
-  binary.addArguments("-headless");
-
-  const options = new firefox.Options()
-        .setBinary(binary);
-
+  const options = new firefox.Options().setBinary(firefoxPath).headless();
   const driver = new Builder()
         .forBrowser("firefox")
         .setFirefoxOptions(options)
@@ -46,13 +41,7 @@ function runScript(firefoxPath, script, scriptName, scriptArgs)
 
 module.exports = function(script, scriptName, ...scriptArgs)
 {
-  return ensureFirefox(FIREFOX_VERSION).then(firefoxPath =>
-  {
-    return runScript(firefoxPath, script, scriptName, scriptArgs)
-      .then(result => result)
-      .catch(error =>
-      {
-        throw error;
-      });
-  });
+  return ensureFirefox(FIREFOX_VERSION)
+    .then(firefoxPath =>
+          runScript(firefoxPath, script, scriptName, scriptArgs));
 };

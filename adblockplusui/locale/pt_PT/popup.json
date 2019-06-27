@@ -1,0 +1,27 @@
+{
+  "easy_create_filter": {
+    "message": "Bloquear elemento"
+  },
+  "options_short": {
+    "message": "Opções"
+  },
+  "overlay_notification_closing_button_optout": {
+    "message": "Parar de mostrar notificações"
+  },
+  "stats_label_page": {
+    "message": "<strong>$number$</strong> nesta página",
+    "placeholders": {
+      "number": {
+        "content": "$1"
+      }
+    }
+  },
+  "stats_label_total": {
+    "message": "<strong>$number$</strong> no total",
+    "placeholders": {
+      "number": {
+        "content": "$1"
+      }
+    }
+  }
+}
