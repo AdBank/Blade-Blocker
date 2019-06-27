@@ -75,7 +75,6 @@
     this._url = tab.url && new URL(tab.url);
 
     this.browserAction = new BrowserAction(tab.id);
-    this.contextMenus = new ContextMenus(this);
   };
   Page.prototype = {
     get url()
@@ -97,10 +96,6 @@
       }
 
       return undefined;
-    },
-    sendMessage(message, responseCallback)
-    {
-      browser.tabs.sendMessage(this.id, message, responseCallback);
     }
   };
 
@@ -134,6 +129,8 @@
       frames.set(frameId, frame);
     }
 
+    frame.state = Object.create(null);
+
     return frame;
   }
 
@@ -145,7 +142,7 @@
 
       removeFromAllPageMaps(tabId);
 
-      browser.tabs.get(tabId, () =>
+      browser.tabs.get(tabId).catch(error =>
       {
         // If the tab is prerendered, browser.tabs.get() sets
         // browser.runtime.lastError and we have to dispatch the onLoading
@@ -153,8 +150,7 @@
         // tabs. However, we have to keep relying on the onUpdated event for
         // tabs that are already visible. Otherwise browser action changes get
         // overridden when Chrome automatically resets them on navigation.
-        if (browser.runtime.lastError)
-          ext.pages.onLoading._dispatch(page);
+        ext.pages.onLoading._dispatch(page);
       });
     }
 
@@ -258,9 +254,11 @@
   browser.webNavigation.onBeforeNavigate.addListener(details =>
   {
     // Requests can be made by about:blank frames before the frame's
-    // onCommitted event has fired, so we update the frame structure
-    // for those now.
-    if (details.url.startsWith("about:"))
+    // onCommitted event has fired; besides, the parent frame's ID is not
+    // always available in onCommitted, nor is the onHeadersReceived event fired
+    // for about: and data: frames; so we update the frame structure for such
+    // frames here.
+    if (details.url.startsWith("about:") || details.url.startsWith("data:"))
     {
       updatePageFrameStructure(details.frameId, details.tabId, details.url,
                                details.parentFrameId);
@@ -269,9 +267,9 @@
 
   browser.webNavigation.onCommitted.addListener(details =>
   {
-    // Unfortunately, Chrome doesn't provide the parent frame ID in the
-    // onCommitted event[1]. So, unless the navigation is for a top-level
-    // frame, we assume its parent frame is the top-level frame.
+    // Chrome <74 doesn't provide the parent frame ID in the onCommitted
+    // event[1]. So, unless the navigation is for a top-level frame, we assume
+    // its parent frame is the top-level frame.
     // [1] - https://bugs.chromium.org/p/chromium/issues/detail?id=908380
     let {frameId, tabId, parentFrameId, url} = details;
     if (typeof parentFrameId == "undefined")
@@ -285,6 +283,22 @@
     let frame = ext.getFrame(tabId, frameId);
     if (!frame || frame.url.href != url)
       updatePageFrameStructure(frameId, tabId, url, parentFrameId);
+  });
+
+  browser.webRequest.onBeforeRequest.addListener(details =>
+  {
+    // Chromium fails to fire webNavigation events for anonymous iframes in
+    // certain edge cases[1]. As a workaround, we keep track of the originating
+    // frame for requests where the frame was previously unknown.
+    // 1 - https://bugs.chromium.org/p/chromium/issues/detail?id=937264
+    let {tabId, frameId, parentFrameId} = details;
+
+    if (frameId > 0 && !ext.getFrame(tabId, frameId))
+      updatePageFrameStructure(frameId, tabId, "about:blank", parentFrameId);
+  }, {
+    types: Object.values(browser.webRequest.ResourceType)
+                 .filter(type => type != "main_frame" && type != "sub_frame"),
+    urls: ["<all_urls>"]
   });
 
   function forgetTab(tabId)
@@ -318,103 +332,97 @@
   BrowserAction.prototype = {
     _applyChanges()
     {
-      if ("iconPath" in this._changes)
+      return Promise.all(Object.keys(this._changes).map(change =>
       {
         // Firefox for Android displays the browser action not as an icon but
-        // as a menu item. There is no icon, but such an option may be added in
-        // the future.
+        // as a menu item. There is no icon, but such an option may be added
+        // in the future.
         // https://bugzilla.mozilla.org/show_bug.cgi?id=1331746
-        if ("setIcon" in browser.browserAction)
+        if (change == "iconPath" && "setIcon" in browser.browserAction)
         {
           let path = {
             16: this._changes.iconPath.replace("$size", "16"),
-            19: this._changes.iconPath.replace("$size", "19"),
             20: this._changes.iconPath.replace("$size", "20"),
             32: this._changes.iconPath.replace("$size", "32"),
-            38: this._changes.iconPath.replace("$size", "38"),
             40: this._changes.iconPath.replace("$size", "40")
           };
           try
           {
-            browser.browserAction.setIcon({tabId: this._tabId, path});
+            return browser.browserAction.setIcon({tabId: this._tabId, path});
           }
           catch (e)
           {
             // Edge throws if passed icon sizes different than 19,20,38,40px.
             delete path[16];
             delete path[32];
-            browser.browserAction.setIcon({tabId: this._tabId, path});
+            return browser.browserAction.setIcon({tabId: this._tabId, path});
           }
         }
-      }
 
-      if ("badgeText" in this._changes)
-      {
+        if (change == "iconImageData" && "setIcon" in browser.browserAction)
+        {
+          return browser.browserAction.setIcon({
+            tabId: this._tabId,
+            imageData: this._changes.iconImageData
+          });
+        }
+
         // There is no badge on Firefox for Android; the browser action is
         // simply a menu item.
-        if ("setBadgeText" in browser.browserAction)
-        {
-          browser.browserAction.setBadgeText({
+        if (change == "badgeText" && "setBadgeText" in browser.browserAction)
+          return browser.browserAction.setBadgeText({
             tabId: this._tabId,
             text: this._changes.badgeText
           });
-        }
-      }
 
-      if ("badgeColor" in this._changes)
-      {
         // There is no badge on Firefox for Android; the browser action is
         // simply a menu item.
-        if ("setBadgeBackgroundColor" in browser.browserAction)
-        {
-          browser.browserAction.setBadgeBackgroundColor({
+        if (change == "badgeColor" &&
+            "setBadgeBackgroundColor" in browser.browserAction)
+          return browser.browserAction.setBadgeBackgroundColor({
             tabId: this._tabId,
             color: this._changes.badgeColor
           });
-        }
-      }
-
-      this._changes = null;
-    },
-    _queueChanges()
-    {
-      browser.tabs.get(this._tabId, () =>
-      {
-        // If the tab is prerendered, browser.tabs.get() sets
-        // browser.runtime.lastError and we have to delay our changes
-        // until the currently visible tab is replaced with the
-        // prerendered tab. Otherwise browser.browserAction.set* fails.
-        if (browser.runtime.lastError)
-        {
-          let onReplaced = (addedTabId, removedTabId) =>
-          {
-            if (addedTabId == this._tabId)
-            {
-              browser.tabs.onReplaced.removeListener(onReplaced);
-              this._applyChanges();
-            }
-          };
-          browser.tabs.onReplaced.addListener(onReplaced);
-        }
-        else
-        {
-          this._applyChanges();
-        }
-      });
+      }));
     },
     _addChange(name, value)
     {
-      if (!this._changes)
+      let onReplaced = (addedTabId, removedTabId) =>
       {
+        if (addedTabId == this._tabId)
+        {
+          browser.tabs.onReplaced.removeListener(onReplaced);
+          this._applyChanges().then(() =>
+          {
+            this._changes = null;
+          });
+        }
+      };
+      if (!this._changes)
         this._changes = {};
-        this._queueChanges();
-      }
 
       this._changes[name] = value;
+      if (!browser.tabs.onReplaced.hasListener(onReplaced))
+      {
+        this._applyChanges().then(() =>
+        {
+          this._changes = null;
+        }).catch(() =>
+        {
+          // If the tab is prerendered, browser.browserAction.set* fails
+          // and we have to delay our changes until the currently visible tab
+          // is replaced with the prerendered tab.
+          browser.tabs.onReplaced.addListener(onReplaced);
+        });
+      }
     },
-    setIcon(path)
+    setIconPath(path)
     {
       this._addChange("iconPath", path);
+    },
+    setIconImageData(imageData)
+    {
+      this._addChange("iconImageData", imageData);
     },
     setBadge(badge)
     {
@@ -434,90 +442,6 @@
   };
 
 
-  /* Context menus */
-
-  let contextMenuItems = new ext.PageMap();
-  let contextMenuUpdating = false;
-
-  let updateContextMenu = () =>
-  {
-    // Firefox for Android does not support context menus.
-    // https://bugzilla.mozilla.org/show_bug.cgi?id=1269062
-    if (!("contextMenus" in browser) || contextMenuUpdating)
-      return;
-
-    contextMenuUpdating = true;
-
-    browser.tabs.query({active: true, lastFocusedWindow: true}, tabs =>
-    {
-      browser.contextMenus.removeAll(() =>
-      {
-        contextMenuUpdating = false;
-
-        if (tabs.length == 0)
-          return;
-
-        let items = contextMenuItems.get({id: tabs[0].id});
-
-        if (!items)
-          return;
-
-        items.forEach(item =>
-        {
-          browser.contextMenus.create({
-            title: item.title,
-            contexts: item.contexts,
-            onclick(info, tab)
-            {
-              item.onclick(new Page(tab));
-            }
-          });
-        });
-      });
-    });
-  };
-
-  let ContextMenus = function(page)
-  {
-    this._page = page;
-  };
-  ContextMenus.prototype = {
-    create(item)
-    {
-      let items = contextMenuItems.get(this._page);
-      if (!items)
-        contextMenuItems.set(this._page, items = []);
-
-      items.push(item);
-      updateContextMenu();
-    },
-    remove(item)
-    {
-      let items = contextMenuItems.get(this._page);
-      if (items)
-      {
-        let index = items.indexOf(item);
-        if (index != -1)
-        {
-          items.splice(index, 1);
-          updateContextMenu();
-        }
-      }
-    }
-  };
-
-  browser.tabs.onActivated.addListener(updateContextMenu);
-
-  if ("windows" in browser)
-  {
-    browser.windows.onFocusChanged.addListener(windowId =>
-    {
-      if (windowId != browser.windows.WINDOW_ID_NONE)
-        updateContextMenu();
-    });
-  }
-
-
   /* Web requests */
 
   let framesOfTabs = new Map();
@@ -528,11 +452,11 @@
     return frames && frames.get(frameId);
   };
 
-  browser.tabs.query({}, tabs =>
+  browser.tabs.query({}).then(tabs =>
   {
     tabs.forEach(tab =>
     {
-      browser.webNavigation.getAllFrames({tabId: tab.id}, details =>
+      browser.webNavigation.getAllFrames({tabId: tab.id}).then(details =>
       {
         if (details && details.length > 0)
         {

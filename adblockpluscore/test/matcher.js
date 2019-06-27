@@ -17,6 +17,7 @@
 
 "use strict";
 
+const assert = require("assert");
 const {createSandbox} = require("./_common");
 
 let Filter = null;
@@ -24,19 +25,21 @@ let RegExpFilter = null;
 let CombinedMatcher = null;
 let defaultMatcher = null;
 let Matcher = null;
+let parseURL = null;
 
 exports.setUp = function(callback)
 {
   let sandboxedRequire = createSandbox();
   (
     {Filter, RegExpFilter} = sandboxedRequire("../lib/filterClasses"),
-    {CombinedMatcher, defaultMatcher, Matcher} = sandboxedRequire("../lib/matcher")
+    {CombinedMatcher, defaultMatcher, Matcher} = sandboxedRequire("../lib/matcher"),
+    {parseURL} = sandboxedRequire("../lib/url")
   );
 
   callback();
 };
 
-function compareKeywords(test, text, expected)
+function compareKeywords(text, expected)
 {
   for (let filter of [Filter.fromText(text), Filter.fromText("@@" + text)])
   {
@@ -54,21 +57,23 @@ function compareKeywords(test, text, expected)
       }
     }
 
-    test.equal(result.join(", "), expected.join(", "), "Keyword candidates for " + filter.text);
+    assert.equal(result.join(", "), expected.join(", "), "Keyword candidates for " + filter.text);
   }
 }
 
-function checkMatch(test, filters, location, contentType, docDomain, thirdParty, sitekey, specificOnly, expected)
+function checkMatch(filters, location, contentType, docDomain, sitekey, specificOnly, expected, expectedFirstMatch = expected)
 {
+  let url = parseURL(location);
+
   let matcher = new Matcher();
   for (let filter of filters)
     matcher.add(Filter.fromText(filter));
 
-  let result = matcher.matchesAny(location, RegExpFilter.typeMap[contentType], docDomain, thirdParty, sitekey, specificOnly);
+  let result = matcher.matchesAny(url, RegExpFilter.typeMap[contentType], docDomain, sitekey, specificOnly);
   if (result)
     result = result.text;
 
-  test.equal(result, expected, "match(" + location + ", " + contentType + ", " + docDomain + ", " + (thirdParty ? "third-party" : "first-party") + ", " + (sitekey || "no-sitekey") + ", " + (specificOnly ? "specificOnly" : "not-specificOnly") + ") with:\n" + filters.join("\n"));
+  assert.equal(result, expectedFirstMatch, "match(" + location + ", " + contentType + ", " + docDomain + ", " + (sitekey || "no-sitekey") + ", " + (specificOnly ? "specificOnly" : "not-specificOnly") + ") with:\n" + filters.join("\n"));
 
   let combinedMatcher = new CombinedMatcher();
   for (let i = 0; i < 2; i++)
@@ -76,11 +81,11 @@ function checkMatch(test, filters, location, contentType, docDomain, thirdParty,
     for (let filter of filters)
       combinedMatcher.add(Filter.fromText(filter));
 
-    result = combinedMatcher.matchesAny(location, RegExpFilter.typeMap[contentType], docDomain, thirdParty, sitekey, specificOnly);
+    result = combinedMatcher.matchesAny(url, RegExpFilter.typeMap[contentType], docDomain, sitekey, specificOnly);
     if (result)
       result = result.text;
 
-    test.equal(result, expected, "combinedMatch(" + location + ", " + contentType + ", " + docDomain + ", " + (thirdParty ? "third-party" : "first-party") + ", " + (sitekey || "no-sitekey") + ", " + (specificOnly ? "specificOnly" : "not-specificOnly") + ") with:\n" + filters.join("\n"));
+    assert.equal(result, expected, "combinedMatch(" + location + ", " + contentType + ", " + docDomain + ", " + (sitekey || "no-sitekey") + ", " + (specificOnly ? "specificOnly" : "not-specificOnly") + ") with:\n" + filters.join("\n"));
 
     // Generic whitelisting rules can match for specificOnly searches, so we
     // can't easily know which rule will match for these whitelisting tests
@@ -88,127 +93,208 @@ function checkMatch(test, filters, location, contentType, docDomain, thirdParty,
       continue;
 
     // For next run: add whitelisting filters for filters that aren't already
-    filters = filters.map(text => text.substr(0, 2) == "@@" ? text : "@@" + text);
-    if (expected && expected.substr(0, 2) != "@@")
+    filters = filters.map(text => text.substring(0, 2) == "@@" ? text : "@@" + text);
+    if (expected && expected.substring(0, 2) != "@@")
       expected = "@@" + expected;
   }
 }
 
-function cacheCheck(test, matcher, location, contentType, docDomain, thirdParty, expected)
+function checkSearch(test, filters, location, contentType, docDomain,
+                     sitekey, specificOnly, filterType, expected)
 {
-  let result = matcher.matchesAny(location, RegExpFilter.typeMap[contentType], docDomain, thirdParty);
+  let url = parseURL(location);
+
+  let matcher = new CombinedMatcher();
+  for (let filter of filters)
+    matcher.add(Filter.fromText(filter));
+
+  let result = matcher.search(url, RegExpFilter.typeMap[contentType],
+                              docDomain, sitekey, specificOnly, filterType);
+  for (let key in result)
+    result[key] = result[key].map(filter => filter.text);
+
+  assert.deepEqual(result, expected, "search(" + location + ", " +
+                   contentType + ", " + docDomain + ", " +
+                   (sitekey || "no-sitekey") + ", " +
+                   (specificOnly ? "specificOnly" : "not-specificOnly") + ", " +
+                   filterType + ") with:\n" + filters.join("\n"));
+}
+
+function cacheCheck(test, matcher, location, contentType, docDomain, expected)
+{
+  let url = parseURL(location);
+
+  let result = matcher.matchesAny(url, RegExpFilter.typeMap[contentType], docDomain);
   if (result)
     result = result.text;
 
-  test.equal(result, expected, "match(" + location + ", " + contentType + ", " + docDomain + ", " + (thirdParty ? "third-party" : "first-party") + ") with static filters");
+  assert.equal(result, expected, "match(" + location + ", " + contentType + ", " + docDomain + ") with static filters");
 }
 
 exports.testMatcherClassDefinitions = function(test)
 {
-  test.equal(typeof Matcher, "function", "typeof Matcher");
-  test.equal(typeof CombinedMatcher, "function", "typeof CombinedMatcher");
-  test.equal(typeof defaultMatcher, "object", "typeof defaultMatcher");
-  test.ok(defaultMatcher instanceof CombinedMatcher, "defaultMatcher is a CombinedMatcher instance");
+  assert.equal(typeof Matcher, "function", "typeof Matcher");
+  assert.equal(typeof CombinedMatcher, "function", "typeof CombinedMatcher");
+  assert.equal(typeof defaultMatcher, "object", "typeof defaultMatcher");
+  assert.ok(defaultMatcher instanceof CombinedMatcher, "defaultMatcher is a CombinedMatcher instance");
 
   test.done();
 };
 
 exports.testKeywordExtraction = function(test)
 {
-  compareKeywords(test, "*", []);
-  compareKeywords(test, "asdf", []);
-  compareKeywords(test, "/asdf/", []);
-  compareKeywords(test, "/asdf1234", []);
-  compareKeywords(test, "/asdf/1234", ["asdf"]);
-  compareKeywords(test, "/asdf/1234^", ["asdf", "1234"]);
-  compareKeywords(test, "/asdf/123456^", ["123456", "asdf"]);
-  compareKeywords(test, "^asdf^1234^56as^", ["asdf", "1234", "56as"]);
-  compareKeywords(test, "*asdf/1234^", ["1234"]);
-  compareKeywords(test, "|asdf,1234*", ["asdf"]);
-  compareKeywords(test, "||domain.example^", ["example", "domain"]);
-  compareKeywords(test, "&asdf=1234|", ["asdf", "1234"]);
-  compareKeywords(test, "^foo%2Ebar^", ["foo%2ebar"]);
-  compareKeywords(test, "^aSdF^1234", ["asdf"]);
-  compareKeywords(test, "_asdf_1234_", ["asdf", "1234"]);
-  compareKeywords(test, "+asdf-1234=", ["asdf", "1234"]);
-  compareKeywords(test, "/123^ad2&ad&", ["123", "ad2"]);
-  compareKeywords(test, "/123^ad2&ad$script,domain=example.com", ["123", "ad2"]);
+  compareKeywords("*", []);
+  compareKeywords("asdf", []);
+  compareKeywords("/asdf/", []);
+  compareKeywords("/asdf1234", []);
+  compareKeywords("/asdf/1234", ["asdf"]);
+  compareKeywords("/asdf/1234^", ["asdf", "1234"]);
+  compareKeywords("/asdf/123456^", ["123456", "asdf"]);
+  compareKeywords("^asdf^1234^56as^", ["asdf", "1234", "56as"]);
+  compareKeywords("*asdf/1234^", ["1234"]);
+  compareKeywords("|asdf,1234*", ["asdf"]);
+  compareKeywords("||domain.example^", ["example", "domain"]);
+  compareKeywords("&asdf=1234|", ["asdf", "1234"]);
+  compareKeywords("^foo%2Ebar^", ["foo%2ebar"]);
+  compareKeywords("^aSdF^1234", ["asdf"]);
+  compareKeywords("_asdf_1234_", ["asdf", "1234"]);
+  compareKeywords("+asdf-1234=", ["asdf", "1234"]);
+  compareKeywords("/123^ad2&ad&", ["123", "ad2"]);
+  compareKeywords("/123^ad2&ad$script,domain=example.com", ["123", "ad2"]);
 
   test.done();
 };
 
 exports.testFilterMatching = function(test)
 {
-  checkMatch(test, [], "http://abc/def", "IMAGE", null, false, null, false, null);
-  checkMatch(test, ["abc"], "http://abc/def", "IMAGE", null, false, null, false, "abc");
-  checkMatch(test, ["abc", "ddd"], "http://abc/def", "IMAGE", null, false, null, false, "abc");
-  checkMatch(test, ["ddd", "abc"], "http://abc/def", "IMAGE", null, false, null, false, "abc");
-  checkMatch(test, ["ddd", "abd"], "http://abc/def", "IMAGE", null, false, null, false, null);
-  checkMatch(test, ["abc", "://abc/d"], "http://abc/def", "IMAGE", null, false, null, false, "://abc/d");
-  checkMatch(test, ["://abc/d", "abc"], "http://abc/def", "IMAGE", null, false, null, false, "://abc/d");
-  checkMatch(test, ["|http://"], "http://abc/def", "IMAGE", null, false, null, false, "|http://");
-  checkMatch(test, ["|http://abc"], "http://abc/def", "IMAGE", null, false, null, false, "|http://abc");
-  checkMatch(test, ["|abc"], "http://abc/def", "IMAGE", null, false, null, false, null);
-  checkMatch(test, ["|/abc/def"], "http://abc/def", "IMAGE", null, false, null, false, null);
-  checkMatch(test, ["/def|"], "http://abc/def", "IMAGE", null, false, null, false, "/def|");
-  checkMatch(test, ["/abc/def|"], "http://abc/def", "IMAGE", null, false, null, false, "/abc/def|");
-  checkMatch(test, ["/abc/|"], "http://abc/def", "IMAGE", null, false, null, false, null);
-  checkMatch(test, ["http://abc/|"], "http://abc/def", "IMAGE", null, false, null, false, null);
-  checkMatch(test, ["|http://abc/def|"], "http://abc/def", "IMAGE", null, false, null, false, "|http://abc/def|");
-  checkMatch(test, ["|/abc/def|"], "http://abc/def", "IMAGE", null, false, null, false, null);
-  checkMatch(test, ["|http://abc/|"], "http://abc/def", "IMAGE", null, false, null, false, null);
-  checkMatch(test, ["|/abc/|"], "http://abc/def", "IMAGE", null, false, null, false, null);
-  checkMatch(test, ["||example.com/abc"], "http://example.com/abc/def", "IMAGE", null, false, null, false, "||example.com/abc");
-  checkMatch(test, ["||com/abc/def"], "http://example.com/abc/def", "IMAGE", null, false, null, false, "||com/abc/def");
-  checkMatch(test, ["||com/abc"], "http://example.com/abc/def", "IMAGE", null, false, null, false, "||com/abc");
-  checkMatch(test, ["||mple.com/abc"], "http://example.com/abc/def", "IMAGE", null, false, null, false, null);
-  checkMatch(test, ["||.com/abc/def"], "http://example.com/abc/def", "IMAGE", null, false, null, false, null);
-  checkMatch(test, ["||http://example.com/"], "http://example.com/abc/def", "IMAGE", null, false, null, false, null);
-  checkMatch(test, ["||example.com/abc/def|"], "http://example.com/abc/def", "IMAGE", null, false, null, false, "||example.com/abc/def|");
-  checkMatch(test, ["||com/abc/def|"], "http://example.com/abc/def", "IMAGE", null, false, null, false, "||com/abc/def|");
-  checkMatch(test, ["||example.com/abc|"], "http://example.com/abc/def", "IMAGE", null, false, null, false, null);
-  checkMatch(test, ["abc", "://abc/d", "asdf1234"], "http://abc/def", "IMAGE", null, false, null, false, "://abc/d");
-  checkMatch(test, ["foo*://abc/d", "foo*//abc/de", "://abc/de", "asdf1234"], "http://abc/def", "IMAGE", null, false, null, false, "://abc/de");
-  checkMatch(test, ["abc$third-party", "abc$~third-party", "ddd"], "http://abc/def", "IMAGE", null, false, null, false, "abc$~third-party");
-  checkMatch(test, ["abc$third-party", "abc$~third-party", "ddd"], "http://abc/def", "IMAGE", null, true, null, false, "abc$third-party");
-  checkMatch(test, ["//abc/def$third-party", "//abc/def$~third-party", "//abc_def"], "http://abc/def", "IMAGE", null, false, null, false, "//abc/def$~third-party");
-  checkMatch(test, ["//abc/def$third-party", "//abc/def$~third-party", "//abc_def"], "http://abc/def", "IMAGE", null, true, null, false, "//abc/def$third-party");
-  checkMatch(test, ["abc$third-party", "abc$~third-party", "//abc/def"], "http://abc/def", "IMAGE", null, true, null, false, "//abc/def");
-  checkMatch(test, ["//abc/def", "abc$third-party", "abc$~third-party"], "http://abc/def", "IMAGE", null, true, null, false, "//abc/def");
-  checkMatch(test, ["abc$third-party", "abc$~third-party", "//abc/def$third-party"], "http://abc/def", "IMAGE", null, true, null, false, "//abc/def$third-party");
-  checkMatch(test, ["abc$third-party", "abc$~third-party", "//abc/def$third-party"], "http://abc/def", "IMAGE", null, false, null, false, "abc$~third-party");
-  checkMatch(test, ["abc$third-party", "abc$~third-party", "//abc/def$~third-party"], "http://abc/def", "IMAGE", null, true, null, false, "abc$third-party");
-  checkMatch(test, ["abc$image", "abc$script", "abc$~image"], "http://abc/def", "IMAGE", null, false, null, false, "abc$image");
-  checkMatch(test, ["abc$image", "abc$script", "abc$~script"], "http://abc/def", "SCRIPT", null, false, null, false, "abc$script");
-  checkMatch(test, ["abc$image", "abc$script", "abc$~image"], "http://abc/def", "OTHER", null, false, null, false, "abc$~image");
-  checkMatch(test, ["//abc/def$image", "//abc/def$script", "//abc/def$~image"], "http://abc/def", "IMAGE", null, false, null, false, "//abc/def$image");
-  checkMatch(test, ["//abc/def$image", "//abc/def$script", "//abc/def$~script"], "http://abc/def", "SCRIPT", null, false, null, false, "//abc/def$script");
-  checkMatch(test, ["//abc/def$image", "//abc/def$script", "//abc/def$~image"], "http://abc/def", "OTHER", null, false, null, false, "//abc/def$~image");
-  checkMatch(test, ["abc$image", "abc$~image", "//abc/def"], "http://abc/def", "IMAGE", null, false, null, false, "//abc/def");
-  checkMatch(test, ["//abc/def", "abc$image", "abc$~image"], "http://abc/def", "IMAGE", null, false, null, false, "//abc/def");
-  checkMatch(test, ["abc$image", "abc$~image", "//abc/def$image"], "http://abc/def", "IMAGE", null, false, null, false, "//abc/def$image");
-  checkMatch(test, ["abc$image", "abc$~image", "//abc/def$script"], "http://abc/def", "IMAGE", null, false, null, false, "abc$image");
-  checkMatch(test, ["abc$domain=foo.com", "abc$domain=bar.com", "abc$domain=~foo.com|~bar.com"], "http://abc/def", "IMAGE", "foo.com", false, null, false, "abc$domain=foo.com");
-  checkMatch(test, ["abc$domain=foo.com", "abc$domain=bar.com", "abc$domain=~foo.com|~bar.com"], "http://abc/def", "IMAGE", "bar.com", false, null, false, "abc$domain=bar.com");
-  checkMatch(test, ["abc$domain=foo.com", "abc$domain=bar.com", "abc$domain=~foo.com|~bar.com"], "http://abc/def", "IMAGE", "baz.com", false, null, false, "abc$domain=~foo.com|~bar.com");
-  checkMatch(test, ["abc$domain=foo.com", "cba$domain=bar.com", "ccc$domain=~foo.com|~bar.com"], "http://abc/def", "IMAGE", "foo.com", false, null, false, "abc$domain=foo.com");
-  checkMatch(test, ["abc$domain=foo.com", "cba$domain=bar.com", "ccc$domain=~foo.com|~bar.com"], "http://abc/def", "IMAGE", "bar.com", false, null, false, null);
-  checkMatch(test, ["abc$domain=foo.com", "cba$domain=bar.com", "ccc$domain=~foo.com|~bar.com"], "http://abc/def", "IMAGE", "baz.com", false, null, false, null);
-  checkMatch(test, ["abc$domain=foo.com", "cba$domain=bar.com", "ccc$domain=~foo.com|~bar.com"], "http://ccc/def", "IMAGE", "baz.com", false, null, false, "ccc$domain=~foo.com|~bar.com");
-  checkMatch(test, ["abc$sitekey=foo-publickey", "abc$sitekey=bar-publickey"], "http://abc/def", "IMAGE", "foo.com", false, "foo-publickey", false, "abc$sitekey=foo-publickey");
-  checkMatch(test, ["abc$sitekey=foo-publickey", "abc$sitekey=bar-publickey"], "http://abc/def", "IMAGE", "bar.com", false, "bar-publickey", false, "abc$sitekey=bar-publickey");
-  checkMatch(test, ["abc$sitekey=foo-publickey", "cba$sitekey=bar-publickey"], "http://abc/def", "IMAGE", "bar.com", false, "bar-publickey", false, null);
-  checkMatch(test, ["abc$sitekey=foo-publickey", "cba$sitekey=bar-publickey"], "http://abc/def", "IMAGE", "baz.com", false, null, false, null);
-  checkMatch(test, ["abc$sitekey=foo-publickey,domain=foo.com", "abc$sitekey=bar-publickey,domain=bar.com"], "http://abc/def", "IMAGE", "foo.com", false, "foo-publickey", false, "abc$sitekey=foo-publickey,domain=foo.com");
-  checkMatch(test, ["abc$sitekey=foo-publickey,domain=foo.com", "abc$sitekey=bar-publickey,domain=bar.com"], "http://abc/def", "IMAGE", "foo.com", false, "bar-publickey", false, null);
-  checkMatch(test, ["abc$sitekey=foo-publickey,domain=foo.com", "abc$sitekey=bar-publickey,domain=bar.com"], "http://abc/def", "IMAGE", "bar.com", false, "foo-publickey", false, null);
-  checkMatch(test, ["abc$sitekey=foo-publickey,domain=foo.com", "abc$sitekey=bar-publickey,domain=bar.com"], "http://abc/def", "IMAGE", "bar.com", false, "bar-publickey", false, "abc$sitekey=bar-publickey,domain=bar.com");
-  checkMatch(test, ["@@foo.com$generichide"], "http://foo.com/bar", "GENERICHIDE", "foo.com", false, null, false, "@@foo.com$generichide");
-  checkMatch(test, ["@@foo.com$genericblock"], "http://foo.com/bar", "GENERICBLOCK", "foo.com", false, null, false, "@@foo.com$genericblock");
-  checkMatch(test, ["@@bar.com$generichide"], "http://foo.com/bar", "GENERICHIDE", "foo.com", false, null, false, null);
-  checkMatch(test, ["@@bar.com$genericblock"], "http://foo.com/bar", "GENERICBLOCK", "foo.com", false, null, false, null);
-  checkMatch(test, ["/bar"], "http://foo.com/bar", "IMAGE", "foo.com", false, null, true, null);
-  checkMatch(test, ["/bar$domain=foo.com"], "http://foo.com/bar", "IMAGE", "foo.com", false, null, true, "/bar$domain=foo.com");
+  checkMatch([], "http://abc/def", "IMAGE", null, null, false, null);
+  checkMatch(["abc"], "http://abc/def", "IMAGE", null, null, false, "abc");
+  checkMatch(["abc", "ddd"], "http://abc/def", "IMAGE", null, null, false, "abc");
+  checkMatch(["ddd", "abc"], "http://abc/def", "IMAGE", null, null, false, "abc");
+  checkMatch(["ddd", "abd"], "http://abc/def", "IMAGE", null, null, false, null);
+  checkMatch(["abc", "://abc/d"], "http://abc/def", "IMAGE", null, null, false, "://abc/d");
+  checkMatch(["://abc/d", "abc"], "http://abc/def", "IMAGE", null, null, false, "://abc/d");
+  checkMatch(["|http://"], "http://abc/def", "IMAGE", null, null, false, "|http://");
+  checkMatch(["|http://abc"], "http://abc/def", "IMAGE", null, null, false, "|http://abc");
+  checkMatch(["|abc"], "http://abc/def", "IMAGE", null, null, false, null);
+  checkMatch(["|/abc/def"], "http://abc/def", "IMAGE", null, null, false, null);
+  checkMatch(["/def|"], "http://abc/def", "IMAGE", null, null, false, "/def|");
+  checkMatch(["/abc/def|"], "http://abc/def", "IMAGE", null, null, false, "/abc/def|");
+  checkMatch(["/abc/|"], "http://abc/def", "IMAGE", null, null, false, null);
+  checkMatch(["http://abc/|"], "http://abc/def", "IMAGE", null, null, false, null);
+  checkMatch(["|http://abc/def|"], "http://abc/def", "IMAGE", null, null, false, "|http://abc/def|");
+  checkMatch(["|/abc/def|"], "http://abc/def", "IMAGE", null, null, false, null);
+  checkMatch(["|http://abc/|"], "http://abc/def", "IMAGE", null, null, false, null);
+  checkMatch(["|/abc/|"], "http://abc/def", "IMAGE", null, null, false, null);
+  checkMatch(["||example.com/abc"], "http://example.com/abc/def", "IMAGE", null, null, false, "||example.com/abc");
+  checkMatch(["||com/abc/def"], "http://example.com/abc/def", "IMAGE", null, null, false, "||com/abc/def");
+  checkMatch(["||com/abc"], "http://example.com/abc/def", "IMAGE", null, null, false, "||com/abc");
+  checkMatch(["||mple.com/abc"], "http://example.com/abc/def", "IMAGE", null, null, false, null);
+  checkMatch(["||.com/abc/def"], "http://example.com/abc/def", "IMAGE", null, null, false, null);
+  checkMatch(["||http://example.com/"], "http://example.com/abc/def", "IMAGE", null, null, false, null);
+  checkMatch(["||example.com/abc/def|"], "http://example.com/abc/def", "IMAGE", null, null, false, "||example.com/abc/def|");
+  checkMatch(["||com/abc/def|"], "http://example.com/abc/def", "IMAGE", null, null, false, "||com/abc/def|");
+  checkMatch(["||example.com/abc|"], "http://example.com/abc/def", "IMAGE", null, null, false, null);
+  checkMatch(["abc", "://abc/d", "asdf1234"], "http://abc/def", "IMAGE", null, null, false, "://abc/d");
+  checkMatch(["foo*://abc/d", "foo*//abc/de", "://abc/de", "asdf1234"], "http://abc/def", "IMAGE", null, null, false, "://abc/de");
+  checkMatch(["abc$third-party", "abc$~third-party", "ddd"], "http://abc/def", "IMAGE", null, null, false, "abc$~third-party");
+  checkMatch(["abc$third-party", "abc$~third-party", "ddd"], "http://abc/def", "IMAGE", "other-domain", null, false, "abc$third-party");
+  checkMatch(["//abc/def$third-party", "//abc/def$~third-party", "//abc_def"], "http://abc/def", "IMAGE", null, null, false, "//abc/def$~third-party");
+  checkMatch(["//abc/def$third-party", "//abc/def$~third-party", "//abc_def"], "http://abc/def", "IMAGE", "other-domain", null, false, "//abc/def$third-party");
+  checkMatch(["abc$third-party", "abc$~third-party", "//abc/def"], "http://abc/def", "IMAGE", "other-domain", null, false, "//abc/def");
+  checkMatch(["//abc/def", "abc$third-party", "abc$~third-party"], "http://abc/def", "IMAGE", "other-domain", null, false, "//abc/def");
+  checkMatch(["abc$third-party", "abc$~third-party", "//abc/def$third-party"], "http://abc/def", "IMAGE", "other-domain", null, false, "//abc/def$third-party");
+  checkMatch(["abc$third-party", "abc$~third-party", "//abc/def$third-party"], "http://abc/def", "IMAGE", null, null, false, "abc$~third-party");
+  checkMatch(["abc$third-party", "abc$~third-party", "//abc/def$~third-party"], "http://abc/def", "IMAGE", "other-domain", null, false, "abc$third-party");
+  checkMatch(["abc$image", "abc$script", "abc$~image"], "http://abc/def", "IMAGE", null, null, false, "abc$image");
+  checkMatch(["abc$image", "abc$script", "abc$~script"], "http://abc/def", "SCRIPT", null, null, false, "abc$script");
+  checkMatch(["abc$image", "abc$script", "abc$~image"], "http://abc/def", "OTHER", null, null, false, "abc$~image");
+  checkMatch(["//abc/def$image", "//abc/def$script", "//abc/def$~image"], "http://abc/def", "IMAGE", null, null, false, "//abc/def$image");
+  checkMatch(["//abc/def$image", "//abc/def$script", "//abc/def$~script"], "http://abc/def", "SCRIPT", null, null, false, "//abc/def$script");
+  checkMatch(["//abc/def$image", "//abc/def$script", "//abc/def$~image"], "http://abc/def", "OTHER", null, null, false, "//abc/def$~image");
+  checkMatch(["abc$image", "abc$~image", "//abc/def"], "http://abc/def", "IMAGE", null, null, false, "//abc/def");
+  checkMatch(["//abc/def", "abc$image", "abc$~image"], "http://abc/def", "IMAGE", null, null, false, "//abc/def");
+  checkMatch(["abc$image", "abc$~image", "//abc/def$image"], "http://abc/def", "IMAGE", null, null, false, "//abc/def$image");
+  checkMatch(["abc$image", "abc$~image", "//abc/def$script"], "http://abc/def", "IMAGE", null, null, false, "abc$image");
+  checkMatch(["abc$domain=foo.com", "abc$domain=bar.com", "abc$domain=~foo.com|~bar.com"], "http://foo.com/abc/def", "IMAGE", "foo.com", null, false, "abc$domain=foo.com");
+  checkMatch(["abc$domain=foo.com", "abc$domain=bar.com", "abc$domain=~foo.com|~bar.com"], "http://bar.com/abc/def", "IMAGE", "bar.com", null, false, "abc$domain=bar.com");
+  checkMatch(["abc$domain=foo.com", "abc$domain=bar.com", "abc$domain=~foo.com|~bar.com"], "http://baz.com/abc/def", "IMAGE", "baz.com", null, false, "abc$domain=~foo.com|~bar.com");
+  checkMatch(["abc$domain=foo.com", "cba$domain=bar.com", "ccc$domain=~foo.com|~bar.com"], "http://foo.com/abc/def", "IMAGE", "foo.com", null, false, "abc$domain=foo.com");
+  checkMatch(["abc$domain=foo.com", "cba$domain=bar.com", "ccc$domain=~foo.com|~bar.com"], "http://bar.com/abc/def", "IMAGE", "bar.com", null, false, null);
+  checkMatch(["abc$domain=foo.com", "cba$domain=bar.com", "ccc$domain=~foo.com|~bar.com"], "http://baz.com/abc/def", "IMAGE", "baz.com", null, false, null);
+  checkMatch(["abc$domain=foo.com", "cba$domain=bar.com", "ccc$domain=~foo.com|~bar.com"], "http://baz.com/ccc/def", "IMAGE", "baz.com", null, false, "ccc$domain=~foo.com|~bar.com");
+  checkMatch(["abc$sitekey=foo-publickey", "abc$sitekey=bar-publickey"], "http://foo.com/abc/def", "IMAGE", "foo.com", "foo-publickey", false, "abc$sitekey=foo-publickey");
+  checkMatch(["abc$sitekey=foo-publickey", "abc$sitekey=bar-publickey"], "http://bar.com/abc/def", "IMAGE", "bar.com", "bar-publickey", false, "abc$sitekey=bar-publickey");
+  checkMatch(["abc$sitekey=foo-publickey", "cba$sitekey=bar-publickey"], "http://bar.com/abc/def", "IMAGE", "bar.com", "bar-publickey", false, null);
+  checkMatch(["abc$sitekey=foo-publickey", "cba$sitekey=bar-publickey"], "http://baz.com/abc/def", "IMAGE", "baz.com", null, false, null);
+  checkMatch(["abc$sitekey=foo-publickey,domain=foo.com", "abc$sitekey=bar-publickey,domain=bar.com"], "http://foo.com/abc/def", "IMAGE", "foo.com", "foo-publickey", false, "abc$sitekey=foo-publickey,domain=foo.com");
+  checkMatch(["abc$sitekey=foo-publickey,domain=foo.com", "abc$sitekey=bar-publickey,domain=bar.com"], "http://foo.com/abc/def", "IMAGE", "foo.com", "bar-publickey", false, null);
+  checkMatch(["abc$sitekey=foo-publickey,domain=foo.com", "abc$sitekey=bar-publickey,domain=bar.com"], "http://bar.com/abc/def", "IMAGE", "bar.com", "foo-publickey", false, null);
+  checkMatch(["abc$sitekey=foo-publickey,domain=foo.com", "abc$sitekey=bar-publickey,domain=bar.com"], "http://bar.com/abc/def", "IMAGE", "bar.com", "bar-publickey", false, "abc$sitekey=bar-publickey,domain=bar.com");
+  checkMatch(["@@foo.com$document"], "http://foo.com/bar", "DOCUMENT", "foo.com", null, false, "@@foo.com$document");
+  checkMatch(["@@foo.com$elemhide"], "http://foo.com/bar", "ELEMHIDE", "foo.com", null, false, "@@foo.com$elemhide");
+  checkMatch(["@@foo.com$generichide"], "http://foo.com/bar", "GENERICHIDE", "foo.com", null, false, "@@foo.com$generichide");
+  checkMatch(["@@foo.com$genericblock"], "http://foo.com/bar", "GENERICBLOCK", "foo.com", null, false, "@@foo.com$genericblock");
+  checkMatch(["@@bar.com$document"], "http://foo.com/bar", "DOCUMENT", "foo.com", null, false, null);
+  checkMatch(["@@bar.com$elemhide"], "http://foo.com/bar", "ELEMHIDE", "foo.com", null, false, null);
+  checkMatch(["@@bar.com$generichide"], "http://foo.com/bar", "GENERICHIDE", "foo.com", null, false, null);
+  checkMatch(["@@bar.com$genericblock"], "http://foo.com/bar", "GENERICBLOCK", "foo.com", null, false, null);
+  checkMatch(["/bar"], "http://foo.com/bar", "IMAGE", "foo.com", null, true, null);
+  checkMatch(["/bar$domain=foo.com"], "http://foo.com/bar", "IMAGE", "foo.com", null, true, "/bar$domain=foo.com");
+  checkMatch(["@@||foo.com^"], "http://foo.com/bar", "IMAGE", "foo.com", null, false, null, "@@||foo.com^");
+  checkMatch(["/bar", "@@||foo.com^"], "http://foo.com/bar", "IMAGE", "foo.com", null, false, "@@||foo.com^");
+  checkMatch(["/bar", "@@||foo.com^"], "http://foo.com/foo", "IMAGE", "foo.com", null, false, null, "@@||foo.com^");
+  checkMatch(["||foo.com^$popup"], "http://foo.com/bar", "POPUP", "foo.com", null, false, "||foo.com^$popup");
+  checkMatch(["@@||foo.com^$popup"], "http://foo.com/bar", "POPUP", "foo.com", null, false, null, "@@||foo.com^$popup");
+  checkMatch(["||foo.com^$popup", "@@||foo.com^$popup"], "http://foo.com/bar", "POPUP", "foo.com", null, false, "@@||foo.com^$popup", "||foo.com^$popup");
+  checkMatch(["||foo.com^$csp=script-src 'none'"], "http://foo.com/bar", "CSP", "foo.com", null, false, "||foo.com^$csp=script-src 'none'");
+  checkMatch(["@@||foo.com^$csp"], "http://foo.com/bar", "CSP", "foo.com", null, false, null, "@@||foo.com^$csp");
+  checkMatch(["||foo.com^$csp=script-src 'none'", "@@||foo.com^$csp"], "http://foo.com/bar", "CSP", "foo.com", null, false, "@@||foo.com^$csp", "||foo.com^$csp=script-src 'none'");
+
+  // See #7312.
+  checkMatch(["^foo/bar/$script"], "http://foo/bar/", "SCRIPT", "example.com", null, true, null);
+  checkMatch(["^foo/bar/$script"], "http://foo/bar/", "SCRIPT", "example.com", null, false, "^foo/bar/$script");
+  checkMatch(["^foo/bar/$script,domain=example.com", "@@^foo/bar/$script"], "http://foo/bar/", "SCRIPT", "example.com", null, true, "@@^foo/bar/$script", "^foo/bar/$script,domain=example.com");
+  checkMatch(["@@^foo/bar/$script", "^foo/bar/$script,domain=example.com"], "http://foo/bar/", "SCRIPT", "example.com", null, true, "@@^foo/bar/$script", "^foo/bar/$script,domain=example.com");
+  checkMatch(["@@^foo/bar/$script", "^foo/bar/$script,domain=example.com"], "http://foo/bar/", "SCRIPT", "example.com", null, false, "@@^foo/bar/$script");
+
+  test.done();
+};
+
+exports.testFilterSearch = function(test)
+{
+  // Start with three filters: foo, bar$domain=example.com, and @@foo
+  let filters = ["foo", "bar$domain=example.com", "@@foo"];
+
+  checkSearch(test, filters, "http://example.com/foo", "IMAGE", "example.com",
+              null, false, "all",
+              {blocking: ["foo"], whitelist: ["@@foo"]});
+
+  // Blocking only.
+  checkSearch(test, filters, "http://example.com/foo", "IMAGE", "example.com",
+              null, false, "blocking", {blocking: ["foo"]});
+
+  // Whitelist only.
+  checkSearch(test, filters, "http://example.com/foo", "IMAGE", "example.com",
+              null, false, "whitelist", {whitelist: ["@@foo"]});
+
+  // Different URLs.
+  checkSearch(test, filters, "http://example.com/bar", "IMAGE", "example.com",
+              null, false, "all",
+              {blocking: ["bar$domain=example.com"], whitelist: []});
+  checkSearch(test, filters, "http://example.com/foo/bar", "IMAGE",
+              "example.com", null, false, "all", {
+                blocking: ["foo", "bar$domain=example.com"],
+                whitelist: ["@@foo"]
+              });
+
+  // Non-matching content type.
+  checkSearch(test, filters, "http://example.com/foo", "CSP", "example.com",
+              null, false, "all", {blocking: [], whitelist: []});
+
+  // Non-matching specificity.
+  checkSearch(test, filters, "http://example.com/foo", "IMAGE", "example.com",
+              null, true, "all", {blocking: [], whitelist: ["@@foo"]});
 
   test.done();
 };
@@ -227,22 +313,169 @@ exports.testResultCacheChecks = function(test)
   matcher.add(Filter.fromText("http://fed$third-party"));
   matcher.add(Filter.fromText("http://fed$~third-party,~script"));
 
-  cacheCheck(test, matcher, "http://abc", "IMAGE", null, false, "abc$image");
-  cacheCheck(test, matcher, "http://abc", "SCRIPT", null, false, "abc$script");
-  cacheCheck(test, matcher, "http://abc", "OTHER", null, false, "abc$~image,~script,~media,~ping");
-  cacheCheck(test, matcher, "http://cba", "IMAGE", null, false, "cba$~third-party,~script");
-  cacheCheck(test, matcher, "http://cba", "IMAGE", null, true, "cba$third-party");
-  cacheCheck(test, matcher, "http://def", "IMAGE", null, false, "http://def$image");
-  cacheCheck(test, matcher, "http://def", "SCRIPT", null, false, "http://def$script");
-  cacheCheck(test, matcher, "http://def", "OTHER", null, false, "http://def$~image,~script,~media,~ping");
-  cacheCheck(test, matcher, "http://fed", "IMAGE", null, false, "http://fed$~third-party,~script");
-  cacheCheck(test, matcher, "http://fed", "IMAGE", null, true, "http://fed$third-party");
-  cacheCheck(test, matcher, "http://abc_cba", "MEDIA", null, false, "cba$~third-party,~script");
-  cacheCheck(test, matcher, "http://abc_cba", "MEDIA", null, true, "cba$third-party");
-  cacheCheck(test, matcher, "http://abc_cba", "SCRIPT", null, false, "abc$script");
-  cacheCheck(test, matcher, "http://def?http://fed", "MEDIA", null, false, "http://fed$~third-party,~script");
-  cacheCheck(test, matcher, "http://def?http://fed", "MEDIA", null, true, "http://fed$third-party");
-  cacheCheck(test, matcher, "http://def?http://fed", "SCRIPT", null, false, "http://def$script");
+  cacheCheck(test, matcher, "http://abc", "IMAGE", null, "abc$image");
+  cacheCheck(test, matcher, "http://abc", "SCRIPT", null, "abc$script");
+  cacheCheck(test, matcher, "http://abc", "OTHER", null, "abc$~image,~script,~media,~ping");
+  cacheCheck(test, matcher, "http://cba", "IMAGE", null, "cba$~third-party,~script");
+  cacheCheck(test, matcher, "http://cba", "IMAGE", "other-domain", "cba$third-party");
+  cacheCheck(test, matcher, "http://def", "IMAGE", null, "http://def$image");
+  cacheCheck(test, matcher, "http://def", "SCRIPT", null, "http://def$script");
+  cacheCheck(test, matcher, "http://def", "OTHER", null, "http://def$~image,~script,~media,~ping");
+  cacheCheck(test, matcher, "http://fed", "IMAGE", null, "http://fed$~third-party,~script");
+  cacheCheck(test, matcher, "http://fed", "IMAGE", "other-domain", "http://fed$third-party");
+  cacheCheck(test, matcher, "http://abc_cba", "MEDIA", null, "cba$~third-party,~script");
+  cacheCheck(test, matcher, "http://abc_cba", "MEDIA", "other-domain", "cba$third-party");
+  cacheCheck(test, matcher, "http://abc_cba", "SCRIPT", null, "abc$script");
+  cacheCheck(test, matcher, "http://def?http://fed", "MEDIA", null, "http://fed$~third-party,~script");
+  cacheCheck(test, matcher, "http://def?http://fed", "MEDIA", "other-domain", "http://fed$third-party");
+  cacheCheck(test, matcher, "http://def?http://fed", "SCRIPT", null, "http://def$script");
+
+  test.done();
+};
+
+exports.testWhitelisted = function(test)
+{
+  let matcher = new CombinedMatcher();
+
+  assert.ok(!matcher.isWhitelisted(parseURL("https://example.com/foo"),
+                                   RegExpFilter.typeMap.IMAGE));
+  assert.ok(!matcher.isWhitelisted(parseURL("https://example.com/bar"),
+                                   RegExpFilter.typeMap.IMAGE));
+  assert.ok(!matcher.isWhitelisted(parseURL("https://example.com/foo"),
+                                   RegExpFilter.typeMap.SUBDOCUMENT));
+
+  matcher.add(Filter.fromText("@@/foo^$image"));
+
+  assert.ok(matcher.isWhitelisted(parseURL("https://example.com/foo"),
+                                  RegExpFilter.typeMap.IMAGE));
+  assert.ok(!matcher.isWhitelisted(parseURL("https://example.com/bar"),
+                                   RegExpFilter.typeMap.IMAGE));
+  assert.ok(!matcher.isWhitelisted(parseURL("https://example.com/foo"),
+                                   RegExpFilter.typeMap.SUBDOCUMENT));
+
+  matcher.remove(Filter.fromText("@@/foo^$image"));
+
+  assert.ok(!matcher.isWhitelisted(parseURL("https://example.com/foo"),
+                                   RegExpFilter.typeMap.IMAGE));
+  assert.ok(!matcher.isWhitelisted(parseURL("https://example.com/bar"),
+                                   RegExpFilter.typeMap.IMAGE));
+  assert.ok(!matcher.isWhitelisted(parseURL("https://example.com/foo"),
+                                   RegExpFilter.typeMap.SUBDOCUMENT));
+
+  test.done();
+};
+
+exports.testAddRemoveByKeyword = function(test)
+{
+  let matcher = new CombinedMatcher();
+
+  matcher.add(Filter.fromText("||example.com/foo/bar/ad.jpg^"));
+
+  // Add the same filter a second time to make sure it doesn't get added again
+  // by a different keyword.
+  matcher.add(Filter.fromText("||example.com/foo/bar/ad.jpg^"));
+
+  assert.ok(!!matcher.matchesAny(parseURL("https://example.com/foo/bar/ad.jpg"),
+                                 RegExpFilter.typeMap.IMAGE));
+
+  matcher.remove(Filter.fromText("||example.com/foo/bar/ad.jpg^"));
+
+  // Make sure the filter got removed so there is no match.
+  assert.ok(!matcher.matchesAny(parseURL("https://example.com/foo/bar/ad.jpg"),
+                                RegExpFilter.typeMap.IMAGE));
+
+  // Map { "example" => { text: "||example.com^$~third-party" } }
+  matcher.add(Filter.fromText("||example.com^$~third-party"));
+
+  assert.equal(matcher._blacklist._filterDomainMapsByKeyword.size, 1);
+
+  for (let [key, value] of matcher._blacklist._filterDomainMapsByKeyword)
+  {
+    assert.equal(key, "example");
+    assert.deepEqual(value, Filter.fromText("||example.com^$~third-party"));
+    break;
+  }
+
+  assert.ok(!!matcher.matchesAny(parseURL("https://example.com/example/ad.jpg"),
+                                 RegExpFilter.typeMap.IMAGE, "example.com"));
+
+  // Map {
+  //   "example" => Map {
+  //     "" => Map {
+  //       { text: "||example.com^$~third-party" } => true,
+  //       { text: "/example/*$~third-party" } => true
+  //     }
+  //   }
+  // }
+  matcher.add(Filter.fromText("/example/*$~third-party"));
+
+  assert.equal(matcher._blacklist._filterDomainMapsByKeyword.size, 1);
+
+  for (let [key, value] of matcher._blacklist._filterDomainMapsByKeyword)
+  {
+    assert.equal(key, "example");
+    assert.equal(value.size, 1);
+
+    let map = value.get("");
+    assert.equal(map.size, 2);
+    assert.equal(map.get(Filter.fromText("||example.com^$~third-party")), true);
+    assert.equal(map.get(Filter.fromText("/example/*$~third-party")), true);
+
+    break;
+  }
+
+  assert.ok(!!matcher.matchesAny(parseURL("https://example.com/example/ad.jpg"),
+                                 RegExpFilter.typeMap.IMAGE, "example.com"));
+
+  // Map { "example" => { text: "/example/*$~third-party" } }
+  matcher.remove(Filter.fromText("||example.com^$~third-party"));
+
+  assert.equal(matcher._blacklist._filterDomainMapsByKeyword.size, 1);
+
+  for (let [key, value] of matcher._blacklist._filterDomainMapsByKeyword)
+  {
+    assert.equal(key, "example");
+    assert.deepEqual(value, Filter.fromText("/example/*$~third-party"));
+    break;
+  }
+
+  assert.ok(!!matcher.matchesAny(parseURL("https://example.com/example/ad.jpg"),
+                                 RegExpFilter.typeMap.IMAGE, "example.com"));
+
+  // Map {}
+  matcher.remove(Filter.fromText("/example/*$~third-party"));
+
+  assert.equal(matcher._blacklist._filterDomainMapsByKeyword.size, 0);
+
+  assert.ok(!matcher.matchesAny(parseURL("https://example.com/example/ad.jpg"),
+                                RegExpFilter.typeMap.IMAGE, "example.com"));
+
+  test.done();
+};
+
+exports.testQuickCheck = function(test)
+{
+  let matcher = new CombinedMatcher();
+
+  // Keywords "example" and "foo".
+  matcher.add(Filter.fromText("||example/foo^"));
+  matcher.add(Filter.fromText("||example/foo."));
+  matcher.add(Filter.fromText("||example/foo/"));
+
+  // Blank keyword.
+  matcher.add(Filter.fromText("/ad."));
+  matcher.add(Filter.fromText("/\\bbar\\b/$match-case"));
+
+  assert.ok(!!matcher.matchesAny(parseURL("https://example/foo/"),
+                                 RegExpFilter.typeMap.IMAGE, "example"));
+
+  // The request URL contains neither "example" nor "foo", therefore it should
+  // get to the filters associated with the blank keyword.
+  // https://gitlab.com/eyeo/adblockplus/adblockpluscore/issues/13
+  assert.ok(!!matcher.matchesAny(parseURL("https://adblockplus/bar/"),
+                                 RegExpFilter.typeMap.IMAGE, "adblockplus"));
+  assert.ok(!matcher.matchesAny(parseURL("https://adblockplus/Bar/"),
+                                RegExpFilter.typeMap.IMAGE, "adblockplus"));
 
   test.done();
 };

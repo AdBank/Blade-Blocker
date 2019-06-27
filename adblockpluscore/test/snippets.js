@@ -19,9 +19,10 @@
 
 "use strict";
 
+const assert = require("assert");
 const {createSandbox} = require("./_common");
 
-let Snippets = null;
+let snippets = null;
 let parseScript = null;
 let compileScript = null;
 let Filter = null;
@@ -32,7 +33,7 @@ exports.setUp = function(callback)
   let sandboxedRequire = createSandbox();
   (
     {Filter, SnippetFilter} = sandboxedRequire("../lib/filterClasses"),
-    {Snippets, parseScript, compileScript} = sandboxedRequire("../lib/snippets")
+    {snippets, parseScript, compileScript} = sandboxedRequire("../lib/snippets")
   );
 
   callback();
@@ -45,15 +46,15 @@ exports.testDomainRestrictions = function(test)
     for (let filter of filters.map(Filter.fromText))
     {
       if (filter instanceof SnippetFilter)
-        Snippets.add(filter);
+        snippets.add(filter);
     }
 
-    let matches = Snippets.getFiltersForDomain(domain).map(
+    let matches = snippets.getFiltersForDomain(domain).map(
       filter => filter.script
     );
-    test.deepEqual(matches.sort(), expectedMatches.sort(), description);
+    assert.deepEqual(matches.sort(), expectedMatches.sort(), description);
 
-    Snippets.clear();
+    snippets.clear();
   }
 
   testScriptMatches(
@@ -97,45 +98,45 @@ exports.testSnippetFiltersContainer = function(test)
 
   function compareRules(description, domain, expectedMatches)
   {
-    let result = Snippets.getFiltersForDomain(domain);
-    test.deepEqual(result.sort(), expectedMatches.sort(), description);
+    let result = snippets.getFiltersForDomain(domain);
+    assert.deepEqual(result.sort(), expectedMatches.sort(), description);
   }
 
-  Snippets.on("snippets.filterAdded",
+  snippets.on("snippets.filterAdded",
               eventHandler.bind(null, "snippets.filterAdded"));
-  Snippets.on("snippets.filterRemoved",
+  snippets.on("snippets.filterRemoved",
               eventHandler.bind(null, "snippets.filterRemoved"));
-  Snippets.on("snippets.filtersCleared",
+  snippets.on("snippets.filtersCleared",
               eventHandler.bind(null, "snippets.filtersCleared"));
 
   let domainFilter = Filter.fromText("example.com#$#filter1");
   let subdomainFilter = Filter.fromText("www.example.com#$#filter2");
   let otherDomainFilter = Filter.fromText("other.example.com#$#filter3");
 
-  Snippets.add(domainFilter);
-  Snippets.add(subdomainFilter);
-  Snippets.add(otherDomainFilter);
+  snippets.add(domainFilter);
+  snippets.add(subdomainFilter);
+  snippets.add(otherDomainFilter);
   compareRules(
     "Return all matching filters",
     "www.example.com",
     [domainFilter, subdomainFilter]
   );
 
-  Snippets.remove(domainFilter);
+  snippets.remove(domainFilter);
   compareRules(
     "Return all matching filters after removing one",
     "www.example.com",
     [subdomainFilter]
   );
 
-  Snippets.clear();
+  snippets.clear();
   compareRules(
     "Return no filters after clearing",
     "www.example.com",
     []
   );
 
-  test.deepEqual(events, [
+  assert.deepEqual(events, [
     ["snippets.filterAdded", domainFilter],
     ["snippets.filterAdded", subdomainFilter],
     ["snippets.filterAdded", otherDomainFilter],
@@ -152,7 +153,7 @@ exports.testScriptParsing = function(test)
   function checkParsedScript(description, script, expectedTree)
   {
     let tree = parseScript(script);
-    test.deepEqual(tree, expectedTree, description);
+    assert.deepEqual(tree, expectedTree, description);
   }
 
   checkParsedScript("Script with no arguments", "foo", [["foo"]]);
@@ -291,7 +292,7 @@ exports.testScriptCompilation = function(test)
     let expected = template.replace("{{{script}}}",
                                     JSON.stringify(parseScript(script)));
 
-    test.equal(expected, actual);
+    assert.equal(expected, actual);
   }
 
   verifyExecutable("hello 'How are you?'");

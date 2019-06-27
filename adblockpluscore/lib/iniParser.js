@@ -107,11 +107,7 @@ class INIParser
                   this.subscriptions.length - 1
                 ];
                 for (let text of this._curObj)
-                {
-                  let filter = Filter.fromText(text);
-                  currentSubscription.filters.push(filter);
-                  filter.addSubscription(currentSubscription);
-                }
+                  currentSubscription.addFilterText(text);
               }
               break;
           }

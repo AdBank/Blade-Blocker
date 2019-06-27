@@ -4,14 +4,16 @@
 
 {
   "manifest_version": 2,
-  {%- if releaseBuild %}
-  "name": "__MSG_name__",
-  {%- else %}
+  {%- if not releaseBuild %}
   "name": "__MSG_name_devbuild__",
+  {%- elif type != "edge" %}
+  "name": "BLADE ad blocker+",
+  {%- else %}
+  "name": "BLADE ad blocker+",
   {%- endif %}
 
-  "short_name": "__MSG_name__",
-  "description": "__MSG_description__",
+  "short_name": "BLADE ad blocker+",
+  "description": "BLADE ad blocker+ blocks ads and protects your privacy",
   "default_locale": "en_US",
   "version": {{version|json}},
   "author": {{metadata.get('general', 'author')|json}},
@@ -55,7 +57,7 @@
     {%- if pageAction.popup %}
     "default_popup": {{pageAction.popup|json}},
     {%- endif %}
-    "default_title": "__MSG_name__"
+    "default_title": "BLADE ad blocker+"
   },
   {%- endif %}
 
@@ -65,7 +67,7 @@
     {%- if browserAction.popup %}
     "default_popup": {{browserAction.popup|json}},
     {%- endif %}
-    "default_title": "__MSG_name__"
+    "default_title": "BLADE ad blocker+"
   },
   {%- endif %}
 

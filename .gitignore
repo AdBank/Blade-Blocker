@@ -3,3 +3,5 @@ node_modules
 blade-blocker.zip
 
 devenv.chrome
+
+devenv.gecko

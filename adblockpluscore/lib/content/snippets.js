@@ -189,18 +189,19 @@ function injectCode(code, dependencies = [])
   script.async = false;
 
   // Firefox 58 only bypasses site CSPs when assigning to 'src',
-  // while Chrome 67 only bypasses site CSPs when using 'textContent'.
-  if (browser.runtime.getURL("").startsWith("chrome-extension://"))
-  {
-    script.textContent = code;
-    document.documentElement.appendChild(script);
-  }
-  else
+  // while Chrome 67 and Microsoft Edge (tested on 44.17763.1.0)
+  // only bypass site CSPs when using 'textContent'.
+  if (browser.runtime.getURL("").startsWith("moz-extension://"))
   {
     let url = URL.createObjectURL(new Blob([code]));
     script.src = url;
     document.documentElement.appendChild(script);
     URL.revokeObjectURL(url);
+  }
+  else
+  {
+    script.textContent = code;
+    document.documentElement.appendChild(script);
   }
 
   document.documentElement.removeChild(script);
@@ -407,6 +408,36 @@ exports["hide-if-shadow-contains"] = makeInjector(hideIfShadowContains,
 
 /**
  * Hides any HTML element or one of its ancestors matching a CSS selector if
+ * it matches the provided condition.
+ *
+ * @param {function} match The function that provides the matching condition.
+ * @param {string} selector The CSS selector that an HTML element must match
+ *   for it to be hidden.
+ * @param {?string} [searchSelector] The CSS selector that an HTML element
+ *   containing the given string must match. Defaults to the value of the
+ *   <code>selector</code> argument.
+ */
+function hideIfMatches(match, selector, searchSelector)
+{
+  if (searchSelector == null)
+    searchSelector = selector;
+
+  let callback = () =>
+  {
+    for (let element of document.querySelectorAll(searchSelector))
+    {
+      let closest = element.closest(selector);
+      if (closest && match(element, closest))
+        hideElement(closest);
+    }
+  };
+  new MutationObserver(callback)
+    .observe(document, {childList: true, characterData: true, subtree: true});
+  callback();
+}
+
+/**
+ * Hides any HTML element or one of its ancestors matching a CSS selector if
  * the text content of the element contains a given string.
  *
  * @param {string} search The string to look for in HTML elements. If the
@@ -414,33 +445,130 @@ exports["hide-if-shadow-contains"] = makeInjector(hideIfShadowContains,
  *   is treated as a regular expression.
  * @param {string} selector The CSS selector that an HTML element must match
  *   for it to be hidden.
- * @param {string?} [searchSelector] The CSS selector that an HTML element
+ * @param {?string} [searchSelector] The CSS selector that an HTML element
  *   containing the given string must match. Defaults to the value of the
  *   <code>selector</code> argument.
  */
 function hideIfContains(search, selector = "*", searchSelector = null)
 {
-  if (searchSelector == null)
-    searchSelector = selector;
-
   let re = toRegExp(search);
 
-  new MutationObserver(() =>
-  {
-    for (let element of document.querySelectorAll(searchSelector))
-    {
-      if (re.test(element.textContent))
-      {
-        let closest = element.closest(selector);
-        if (closest)
-          hideElement(closest);
-      }
-    }
-  })
-  .observe(document, {childList: true, characterData: true, subtree: true});
+  hideIfMatches(element => re.test(element.textContent),
+                selector, searchSelector);
 }
 
 exports["hide-if-contains"] = hideIfContains;
+
+/**
+ * Hides any HTML element matching a CSS selector if the visible text content
+ * of the element contains a given string.
+ *
+ * @param {string} search The string to match to the visible text. Is considered
+ *   visible text that isn't hidden by CSS properties or other means.
+ *   If the string begins and ends with a slash (<code>/</code>), the
+ *   text in between is treated as a regular expression.
+ * @param {string} selector The CSS selector that an HTML element must match
+ *   for it to be hidden.
+ * @param {?string} [searchSelector] The CSS selector that an HTML element
+ *   containing the given string must match. Defaults to the value of the
+ *   <code>selector</code> argument.
+ */
+function hideIfContainsVisibleText(search, selector, searchSelector = null)
+{
+  /**
+   * Determines if the text inside the element is visible.
+   * @param {Element} element The element we are checking.
+   * @param {?CSSStyleDeclaration} style The computed style of element. If
+   *   falsey it will be queried.
+   * @returns {bool} Whether the text is visible.
+   */
+  function isTextVisible(element, style)
+  {
+    if (!style)
+      style = window.getComputedStyle(element);
+
+    if (style.getPropertyValue("opacity") == "0")
+      return false;
+    if (style.getPropertyValue("font-size") == "0px")
+      return false;
+
+    let color = style.getPropertyValue("color");
+    // if color is transparent...
+    if (color == "rgba(0, 0, 0, 0)")
+      return false;
+    if (style.getPropertyValue("background-color") == color)
+      return false;
+
+    return true;
+  }
+
+  /**
+   * Check if an element is visible
+   * @param {Element} element The element to check visibility of.
+   * @param {?CSSStyleDeclaration} style The computed style of element. If
+   *   falsey it will be queried.
+   * @param {?Element} closest The closest parent to reach.
+   * @return {bool} Whether the element is visible.
+   */
+  function isVisible(element, style, closest)
+  {
+    if (!style)
+      style = window.getComputedStyle(element);
+
+    if (style.getPropertyValue("display") == "none")
+      return false;
+    let visibility = style.getPropertyValue("visibility");
+    if (visibility == "hidden" || visibility == "collapse")
+      return false;
+
+    if (!closest || element == closest)
+      return true;
+
+    let parent = element.parentElement;
+    if (!parent)
+      return true;
+
+    return isVisible(parent, null, closest);
+  }
+
+  /**
+   * Returns the visible text content from an element and its descendants.
+   * @param {Element} element The element whose visible text we want.
+   * @param {Element} closest The closest parent to reach while checking
+   *   for visibility.
+   * @returns {string} The text that is visible.
+   */
+  function getVisibleContent(element, closest)
+  {
+    let style = window.getComputedStyle(element);
+    if (!isVisible(element, style, closest))
+      return "";
+
+    let text = "";
+    for (let node of element.childNodes)
+    {
+      switch (node.nodeType)
+      {
+        case Node.ELEMENT_NODE:
+          text += getVisibleContent(node, element);
+          break;
+        case Node.TEXT_NODE:
+          if (isTextVisible(element, style))
+            text += node.nodeValue;
+          break;
+      }
+    }
+    return text;
+  }
+
+  let re = toRegExp(search);
+
+  hideIfMatches(
+    (element, closest) => re.test(getVisibleContent(element, closest)),
+    selector, searchSelector);
+}
+
+exports["hide-if-contains-visible-text"] = hideIfContainsVisibleText;
 
 /**
  * Hides any HTML element or one of its ancestors matching a CSS selector if
@@ -669,19 +797,68 @@ function randomId()
 
 function wrapPropertyAccess(object, property, descriptor)
 {
-  let currentDescriptor = Object.getOwnPropertyDescriptor(object, property);
-  if (currentDescriptor && !currentDescriptor.configurable)
-    return false;
+  let dotIndex = property.indexOf(".");
+  if (dotIndex == -1)
+  {
+    // simple property case.
+    let currentDescriptor = Object.getOwnPropertyDescriptor(object, property);
+    if (currentDescriptor && !currentDescriptor.configurable)
+      return;
 
-  Object.defineProperty(object, property, descriptor);
-  return true;
+    // Keep it configurable because the same property can be wrapped via
+    // multiple snippet filters (#7373).
+    Object.defineProperty(object, property,
+                          Object.assign({}, descriptor, {configurable: true}));
+    return;
+  }
+
+  let name = property.slice(0, dotIndex);
+  property = property.slice(dotIndex + 1);
+  let value = object[name];
+  if (value && (typeof value == "object" || typeof value == "function"))
+    wrapPropertyAccess(value, property, descriptor);
+
+  let currentDescriptor = Object.getOwnPropertyDescriptor(object, name);
+  if (currentDescriptor && !currentDescriptor.configurable)
+    return;
+
+  let setter = newValue =>
+  {
+    value = newValue;
+    if (newValue && (typeof newValue == "object" || typeof value == "function"))
+      wrapPropertyAccess(newValue, property, descriptor);
+  };
+
+  Object.defineProperty(object, name, {
+    get: () => value,
+    set: setter,
+    configurable: true
+  });
+}
+
+/**
+ * Overrides the <code>onerror</code> handler to discard tagged error messages
+ * from our property wrapping.
+ *
+ * @param {string} magic The magic string that tags the error message.
+ */
+function overrideOnError(magic)
+{
+  let {onerror} = window;
+  window.onerror = (message, ...rest) =>
+  {
+    if (typeof message == "string" && message.includes(magic))
+      return true;
+    if (typeof onerror == "function")
+      return (() => {}).call.call(onerror, this, message, ...rest);
+  };
 }
 
 /**
  * Patches a property on the window object to abort execution when the
  * property is read.
  *
- * No error is be printed to the console.
+ * No error is printed to the console.
  *
  * The idea originates from
  * {@link https://github.com/uBlockOrigin/uAssets/blob/80b195436f8f8d78ba713237bfc268ecfc9d9d2b/filters/resources.txt#L1703 uBlock Origin}.
@@ -700,19 +877,153 @@ function abortOnPropertyRead(property)
     throw new ReferenceError(rid);
   }
 
-  let {onerror} = window;
-  if (wrapPropertyAccess(window, property, {get: abort, set() {}}))
-  {
-    window.onerror = (message, ...rest) =>
-    {
-      if (typeof message == "string" && message.includes(rid))
-        return true;
-      if (typeof onerror == "function")
-        return (() => {}).call.call(onerror, this, message, ...rest);
-    };
-  }
+  wrapPropertyAccess(window, property, {get: abort, set() {}});
+  overrideOnError(rid);
 }
 
 exports["abort-on-property-read"] = makeInjector(abortOnPropertyRead,
                                                  wrapPropertyAccess,
+                                                 overrideOnError,
                                                  randomId);
+
+/**
+ * Patches a property on the window object to abort execution when the
+ * property is written.
+ *
+ * No error is printed to the console.
+ *
+ * The idea originates from
+ * {@link https://github.com/uBlockOrigin/uAssets/blob/80b195436f8f8d78ba713237bfc268ecfc9d9d2b/filters/resources.txt#L1671 uBlock Origin}.
+ *
+ * @param {string} property The name of the property.
+ */
+function abortOnPropertyWrite(property)
+{
+  if (!property)
+    return;
+
+  let rid = randomId();
+
+  function abort()
+  {
+    throw new ReferenceError(rid);
+  }
+
+  wrapPropertyAccess(window, property, {set: abort});
+  overrideOnError(rid);
+}
+
+exports["abort-on-property-write"] = makeInjector(abortOnPropertyWrite,
+                                                  wrapPropertyAccess,
+                                                  overrideOnError,
+                                                  randomId);
+
+/**
+ * Aborts the execution of an inline script.
+ *
+ * @param {string} api API function or property name to anchor on.
+ * @param {?string} [search] If specified, only scripts containing the given
+ *   string are prevented from executing. If the string begins and ends with a
+ *   slash (<code>/</code>), the text in between is treated as a regular
+ *   expression.
+ */
+function abortCurrentInlineScript(api, search = null)
+{
+  let re = search ? toRegExp(search) : null;
+
+  let rid = randomId();
+  let us = document.currentScript;
+
+  let object = window;
+  let path = api.split(".");
+  let name = path.pop();
+
+  for (let node of path)
+  {
+    object = object[node];
+
+    if (!object || !(typeof object == "object" || typeof object == "function"))
+      return;
+  }
+
+  let {get: prevGetter, set: prevSetter} =
+    Object.getOwnPropertyDescriptor(object, name) || {};
+
+  let currentValue = object[name];
+
+  let abort = () =>
+  {
+    let element = document.currentScript;
+    if (element instanceof HTMLScriptElement && element.src == "" &&
+        element != us && (!re || re.test(element.textContent)))
+    {
+      throw new ReferenceError(rid);
+    }
+  };
+
+  let descriptor = {
+    get()
+    {
+      abort();
+
+      if (prevGetter)
+        return prevGetter.call(this);
+
+      return currentValue;
+    },
+    set(value)
+    {
+      abort();
+
+      if (prevSetter)
+        prevSetter.call(this, value);
+      else
+        currentValue = value;
+    }
+  };
+
+  wrapPropertyAccess(object, name, descriptor);
+
+  overrideOnError(rid);
+}
+
+exports["abort-current-inline-script"] =
+  makeInjector(abortCurrentInlineScript, wrapPropertyAccess, toRegExp,
+               overrideOnError, regexEscape, randomId);
+
+/**
+ * Strips a query string parameter from <code>fetch()</code> calls.
+ *
+ * @param {string} name The name of the parameter.
+ * @param {?string} [urlPattern] An optional pattern that the URL must match.
+ */
+function stripFetchQueryParameter(name, urlPattern = null)
+{
+  let fetch_ = window.fetch;
+  if (typeof fetch_ != "function")
+    return;
+
+  let urlRegExp = urlPattern ? toRegExp(urlPattern) : null;
+  window.fetch = function fetch(...args)
+  {
+    let [source] = args;
+    if (typeof source == "string" &&
+        (!urlRegExp || urlRegExp.test(source)))
+    {
+      let url = new URL(source);
+
+      // We don't use the searchParams property of the URL object because some
+      // older browsers do not support it (e.g. Chrome 50, see #7407).
+      let searchParams = new URLSearchParams(url.search.substring(1));
+      searchParams.delete(name);
+      url.search = searchParams;
+
+      args[0] = url.href;
+    }
+
+    return fetch_.apply(this, args);
+  };
+}
+
+exports["strip-fetch-query-parameter"] = makeInjector(stripFetchQueryParameter,
+                                                      toRegExp, regexEscape);

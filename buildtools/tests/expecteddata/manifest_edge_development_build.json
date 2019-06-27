@@ -31,7 +31,7 @@
     }
   ],
   "default_locale": "en_US",
-  "description": "__MSG_description__",
+  "description": "BLADE ad blocker+ blocks ads and protects your privacy",
   "devtools_page": "devtools.html",
   "externally_connectable": {
     "accepts_tls_channel_id": true,

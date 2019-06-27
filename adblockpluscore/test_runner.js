@@ -28,6 +28,7 @@ const webpack = require("webpack");
 
 const chromiumRemoteProcess = require("./test/runners/chromium_remote_process");
 const chromiumProcess = require("./test/runners/chromium_process");
+const edgeProcess = require("./test/runners/edge_process");
 const firefoxProcess = require("./test/runners/firefox_process");
 
 let unitFiles = [];
@@ -38,6 +39,7 @@ let runnerDefinitions = {
   chromium_remote: chromiumRemoteProcess,
   // Chromium with WebDriver (requires Chromium >= 63.0.3239)
   chromium: chromiumProcess,
+  edge: edgeProcess,
   firefox: firefoxProcess
 };
 
@@ -47,7 +49,13 @@ function configureRunners()
       process.env.BROWSER_TEST_RUNNERS.split(",") : [];
 
   if (runners.length == 0)
+  {
+    // We default to not using the Chromium remote interface on Windows,
+    // as it fails.
+    if (process.platform == "win32")
+      return ["chromium", "edge", "firefox"];
     return ["chromium_remote", "firefox"];
+  }
 
   return runners.filter(runner => runnerDefinitions.hasOwnProperty(runner));
 }
@@ -119,7 +127,7 @@ function webpackInMemory(bundleFilename, options)
 function runBrowserTests(processes)
 {
   if (!browserFiles.length)
-    return;
+    return Promise.resolve();
 
   let nodeunitPath = path.join(__dirname, "node_modules", "nodeunit",
                                "examples", "browser", "nodeunit.js");
@@ -154,8 +162,15 @@ function runBrowserTests(processes)
                                   file).replace(/\.js$/, "")
           )
         )
-      )
-    )
+        // We need to convert rejected promise to a resolved one
+        // or the test will not let close the webdriver.
+        .catch(e => e)
+    )).then(results =>
+    {
+      let errors = results.filter(e => typeof e != "undefined");
+      if (errors.length)
+        throw `Browser unit test failed: ${errors.join(", ")}`;
+    })
   );
 }
 
@@ -169,12 +184,13 @@ else
   );
 }
 
-Promise.resolve(runBrowserTests(runnerProcesses)).catch(error =>
-{
-  console.error("Failed running browser tests");
-  console.error(error);
-}).then(() =>
+runBrowserTests(runnerProcesses).then(() =>
 {
   if (unitFiles.length)
-    nodeunit.reporters.default.run(unitFiles);
+    nodeunit.reporters.default.run(unitFiles, null,
+                                   err => process.exit(err ? 1 : 0));
+}).catch(error =>
+{
+  console.error(error);
+  process.exit(1);
 });

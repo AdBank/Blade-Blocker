@@ -17,13 +17,17 @@
 
 "use strict";
 
+const assert = require("assert");
 const {createSandbox} = require("./_common");
+
+let f$ = null;
 
 let Subscription = null;
 let SpecialSubscription = null;
 let DownloadableSubscription = null;
 let RegularSubscription = null;
 let ExternalSubscription = null;
+let Filter = null;
 
 exports.setUp = function(callback)
 {
@@ -31,8 +35,11 @@ exports.setUp = function(callback)
   (
     {Subscription, SpecialSubscription,
      DownloadableSubscription, RegularSubscription,
-     ExternalSubscription} = sandboxedRequire("../lib/subscriptionClasses")
+     ExternalSubscription} = sandboxedRequire("../lib/subscriptionClasses"),
+    {Filter} = sandboxedRequire("../lib/filterClasses")
   );
+
+  f$ = Filter.fromText;
 
   callback();
 };
@@ -43,9 +50,8 @@ function compareSubscription(test, url, expected, postInit)
   let subscription = Subscription.fromURL(url);
   if (postInit)
     postInit(subscription);
-  let result = [];
-  subscription.serialize(result);
-  test.equal(result.sort().join("\n"), expected.sort().join("\n"), url);
+  let result = [...subscription.serialize()];
+  assert.equal(result.sort().join("\n"), expected.sort().join("\n"), url);
 
   let map = Object.create(null);
   for (let line of result.slice(1))
@@ -54,16 +60,29 @@ function compareSubscription(test, url, expected, postInit)
       map[RegExp.$1] = RegExp.$2;
   }
   let subscription2 = Subscription.fromObject(map);
-  test.equal(subscription.toString(), subscription2.toString(), url + " deserialization");
+  assert.equal(subscription.toString(), subscription2.toString(), url + " deserialization");
+}
+
+function compareSubscriptionFilters(test, subscription, expected)
+{
+  assert.deepEqual([...subscription.filterText()], expected);
+
+  assert.equal(subscription.filterCount, expected.length);
+
+  for (let i = 0; i < subscription.filterCount; i++)
+    assert.equal(subscription.filterTextAt(i), expected[i]);
+
+  assert.ok(!subscription.filterTextAt(subscription.filterCount));
+  assert.ok(!subscription.filterTextAt(-1));
 }
 
 exports.testSubscriptionClassDefinitions = function(test)
 {
-  test.equal(typeof Subscription, "function", "typeof Subscription");
-  test.equal(typeof SpecialSubscription, "function", "typeof SpecialSubscription");
-  test.equal(typeof RegularSubscription, "function", "typeof RegularSubscription");
-  test.equal(typeof ExternalSubscription, "function", "typeof ExternalSubscription");
-  test.equal(typeof DownloadableSubscription, "function", "typeof DownloadableSubscription");
+  assert.equal(typeof Subscription, "function", "typeof Subscription");
+  assert.equal(typeof SpecialSubscription, "function", "typeof SpecialSubscription");
+  assert.equal(typeof RegularSubscription, "function", "typeof RegularSubscription");
+  assert.equal(typeof ExternalSubscription, "function", "typeof ExternalSubscription");
+  assert.equal(typeof DownloadableSubscription, "function", "typeof DownloadableSubscription");
 
   test.done();
 };
@@ -82,14 +101,13 @@ exports.testSubscriptionsWithState = function(test)
   compareSubscription(
     test, "http://test/non_default",
     [
-      "url=http://test/non_default", "type=ads", "title=test", "disabled=true",
+      "url=http://test/non_default", "title=test", "disabled=true",
       "lastSuccess=8", "lastDownload=12", "lastCheck=16", "softExpiration=18",
       "expires=20", "downloadStatus=foo", "errors=3", "version=24",
       "requiredVersion=0.6"
     ],
     subscription =>
     {
-      subscription.type = "ads";
       subscription.title = "test";
       subscription.disabled = true;
       subscription.lastSuccess = 8;
@@ -111,6 +129,126 @@ exports.testSubscriptionsWithState = function(test)
       subscription.disabled = true;
     }
   );
+
+  test.done();
+};
+
+exports.testFilterManagement = function(test)
+{
+  let subscription = Subscription.fromURL("https://example.com/");
+
+  compareSubscriptionFilters(test, subscription, []);
+
+  subscription.addFilter(f$("##.foo"));
+  compareSubscriptionFilters(test, subscription, ["##.foo"]);
+  assert.equal(subscription.findFilterIndex(f$("##.foo")), 0);
+
+  subscription.addFilter(f$("##.bar"));
+  compareSubscriptionFilters(test, subscription, ["##.foo", "##.bar"]);
+  assert.equal(subscription.findFilterIndex(f$("##.bar")), 1);
+
+  // Repeat filter.
+  subscription.addFilter(f$("##.bar"));
+  compareSubscriptionFilters(test, subscription, ["##.foo", "##.bar",
+                                                  "##.bar"]);
+
+  // The first occurrence is found.
+  assert.equal(subscription.findFilterIndex(f$("##.bar")), 1);
+
+  subscription.deleteFilterAt(0);
+  compareSubscriptionFilters(test, subscription, ["##.bar", "##.bar"]);
+  assert.equal(subscription.findFilterIndex(f$("##.bar")), 0);
+
+  subscription.insertFilterAt(f$("##.foo"), 0);
+  compareSubscriptionFilters(test, subscription, ["##.foo", "##.bar",
+                                                  "##.bar"]);
+  assert.equal(subscription.findFilterIndex(f$("##.bar")), 1);
+
+  subscription.deleteFilterAt(1);
+  compareSubscriptionFilters(test, subscription, ["##.foo", "##.bar"]);
+  assert.equal(subscription.findFilterIndex(f$("##.bar")), 1);
+
+  subscription.deleteFilterAt(1);
+  compareSubscriptionFilters(test, subscription, ["##.foo"]);
+  assert.equal(subscription.findFilterIndex(f$("##.bar")), -1);
+
+  subscription.addFilter(f$("##.bar"));
+  compareSubscriptionFilters(test, subscription, ["##.foo", "##.bar"]);
+  assert.equal(subscription.findFilterIndex(f$("##.bar")), 1);
+
+  subscription.clearFilters();
+  compareSubscriptionFilters(test, subscription, []);
+  assert.equal(subscription.findFilterIndex(f$("##.foo")), -1);
+  assert.equal(subscription.findFilterIndex(f$("##.bar")), -1);
+
+  subscription.addFilter(f$("##.bar"));
+  compareSubscriptionFilters(test, subscription, ["##.bar"]);
+
+  subscription.addFilter(f$("##.foo"));
+  compareSubscriptionFilters(test, subscription, ["##.bar", "##.foo"]);
+  assert.equal(subscription.findFilterIndex(f$("##.bar")), 0);
+  assert.equal(subscription.findFilterIndex(f$("##.foo")), 1);
+
+  // Insert outside of bounds.
+  subscription.insertFilterAt(f$("##.lambda"), 1000);
+  compareSubscriptionFilters(test, subscription, ["##.bar", "##.foo",
+                                                  "##.lambda"]);
+  assert.equal(subscription.findFilterIndex(f$("##.lambda")), 2);
+
+  // Delete outside of bounds.
+  subscription.deleteFilterAt(1000);
+  compareSubscriptionFilters(test, subscription, ["##.bar", "##.foo",
+                                                  "##.lambda"]);
+  assert.equal(subscription.findFilterIndex(f$("##.lambda")), 2);
+
+  // Insert outside of bounds (negative).
+  subscription.insertFilterAt(f$("##.lambda"), -1000);
+  compareSubscriptionFilters(test, subscription, ["##.lambda", "##.bar",
+                                                  "##.foo", "##.lambda"]);
+  assert.equal(subscription.findFilterIndex(f$("##.lambda")), 0);
+
+  // Delete outside of bounds (negative).
+  subscription.deleteFilterAt(-1000);
+  compareSubscriptionFilters(test, subscription, ["##.lambda", "##.bar",
+                                                  "##.foo", "##.lambda"]);
+  assert.equal(subscription.findFilterIndex(f$("##.lambda")), 0);
+
+  test.done();
+};
+
+exports.testSubscriptionDelta = function(test)
+{
+  let subscription = Subscription.fromURL("https://example.com/");
+
+  subscription.addFilterText("##.foo");
+  subscription.addFilterText("##.bar");
+
+  compareSubscriptionFilters(test, subscription, ["##.foo", "##.bar"]);
+
+  let delta = subscription.updateFilterText(["##.lambda", "##.foo"]);
+
+  // The filters should be in the same order in which they were in the argument
+  // to updateFilterText()
+  compareSubscriptionFilters(test, subscription, ["##.lambda", "##.foo"]);
+
+  assert.deepEqual(delta, {added: ["##.lambda"], removed: ["##.bar"]});
+
+  // Add ##.lambda a second time.
+  subscription.addFilterText("##.lambda");
+  compareSubscriptionFilters(test, subscription, ["##.lambda", "##.foo",
+                                                  "##.lambda"]);
+
+  delta = subscription.updateFilterText(["##.bar", "##.bar"]);
+
+  // Duplicate filters should be allowed.
+  compareSubscriptionFilters(test, subscription, ["##.bar", "##.bar"]);
+
+  // If there are duplicates in the text, there should be duplicates in the
+  // delta.
+  assert.deepEqual(delta, {
+    added: ["##.bar", "##.bar"],
+    removed: ["##.lambda", "##.foo", "##.lambda"]
+  });
 
   test.done();
 };

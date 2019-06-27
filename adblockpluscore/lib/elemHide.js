@@ -23,13 +23,25 @@
 
 const {ElemHideExceptions} = require("./elemHideExceptions");
 const {filterNotifier} = require("./filterNotifier");
+const {normalizeHostname, domainSuffixes} = require("./url");
+const {FiltersByDomain} = require("./filtersByDomain");
+const {Cache} = require("./caching");
+
+/**
+ * The maximum number of selectors in a CSS rule. This is used by
+ * <code>{@link createStyleSheet}</code> to split up a long list of selectors
+ * into multiple rules.
+ * @const {number}
+ * @default
+ */
+const selectorGroupSize = 1024;
 
 /**
  * Lookup table, active flag, by filter by domain.
  * (Only contains filters that aren't unconditionally matched for all domains.)
- * @type {Map.<string,Map.<Filter,boolean>>}
+ * @type {FiltersByDomain}
  */
-let filtersByDomain = new Map();
+let filtersByDomain = new FiltersByDomain();
 
 /**
  * Lookup table, filter by selector. (Only used for selectors that are
@@ -47,11 +59,28 @@ let filterBySelector = new Map();
 let unconditionalSelectors = null;
 
 /**
- * Map to be used instead when a filter has a blank domains property.
- * @type {Map.<string,boolean>}
- * @const
+ * The default style sheet that applies on all domains. This is based on the
+ * value of <code>{@link unconditionalSelectors}</code>.
+ * @type {?string}
  */
-let defaultDomains = new Map([["", true]]);
+let defaultStyleSheet = null;
+
+/**
+ * The common style sheet that applies on all unknown domains. This is a
+ * concatenation of the default style sheet and an additional style sheet based
+ * on selectors from all generic filters that are not in the
+ * <code>{@link unconditionalSelectors}</code> list.
+ * @type {?string}
+ */
+let commonStyleSheet = null;
+
+/**
+ * Cache of generated domain-specific style sheets. This contains entries for
+ * only known domains. If a domain is unknown, it gets
+ * <code>{@link commonStyleSheet}</code>.
+ * @type {Cache.<string, string>}
+ */
+let styleSheetCache = new Cache(100);
 
 /**
  * Set containing known element hiding filters
@@ -60,23 +89,27 @@ let defaultDomains = new Map([["", true]]);
 let knownFilters = new Set();
 
 /**
- * Adds a filter to the lookup table of filters by domain.
- * @param {Filter} filter
+ * All domains known to occur in exceptions
+ * @type {Set.<string>}
  */
-function addToFiltersByDomain(filter)
-{
-  let domains = filter.domains || defaultDomains;
-  for (let [domain, isIncluded] of domains)
-  {
-    // There's no need to note that a filter is generically disabled.
-    if (!isIncluded && domain == "")
-      continue;
+let knownExceptionDomains = new Set();
 
-    let filters = filtersByDomain.get(domain);
-    if (!filters)
-      filtersByDomain.set(domain, filters = new Map());
-    filters.set(filter, isIncluded);
+/**
+ * Returns the suffix of the given domain that is known. If no suffix is known,
+ * an empty string is returned.
+ * @param {?string} domain
+ * @returns {string}
+ */
+function getKnownSuffix(domain)
+{
+  while (domain && !filtersByDomain.has(domain) &&
+         !knownExceptionDomains.has(domain))
+  {
+    let index = domain.indexOf(".");
+    domain = index == -1 ? "" : domain.substring(index + 1);
   }
+
+  return domain;
 }
 
 /**
@@ -91,16 +124,167 @@ function getUnconditionalSelectors()
   return unconditionalSelectors;
 }
 
-ElemHideExceptions.on("added", ({selector}) =>
+/**
+ * Returns the list of selectors that apply on a given domain from the subset
+ * of filters that do not apply unconditionally on all domains.
+ *
+ * @param {string} domain The domain.
+ * @param {boolean} specificOnly Whether selectors from generic filters should
+ *   be included.
+ *
+ * @returns {Array.<string>} The list of selectors.
+ */
+function getConditionalSelectors(domain, specificOnly)
 {
+  let selectors = [];
+
+  let excluded = new Set();
+
+  for (let currentDomain of domainSuffixes(domain, !specificOnly))
+  {
+    let map = filtersByDomain.get(currentDomain);
+    if (map)
+    {
+      for (let [filter, include] of map.entries())
+      {
+        if (!include)
+        {
+          excluded.add(filter);
+        }
+        else
+        {
+          let {selector} = filter;
+          if ((excluded.size == 0 || !excluded.has(filter)) &&
+              !ElemHideExceptions.getException(selector, domain))
+          {
+            selectors.push(selector);
+          }
+        }
+      }
+    }
+  }
+
+  return selectors;
+}
+
+/**
+ * Returns the list of selectors and the list of exceptions that apply on a
+ * given domain from the subset of filters that do not apply unconditionally
+ * on all domains.
+ *
+ * @param {string} domain The domain.
+ * @param {boolean} specificOnly Whether selectors from generic filters should
+ *   be included.
+ *
+ * @returns {{selectors: Array.<string>, exceptions: Array.<ElemHideException>}}
+ *   An object containing the lists of selectors and exceptions.
+ */
+function getConditionalSelectorsWithExceptions(domain, specificOnly)
+{
+  let selectors = [];
+  let exceptions = [];
+
+  let excluded = new Set();
+
+  for (let currentDomain of domainSuffixes(domain, !specificOnly))
+  {
+    let map = filtersByDomain.get(currentDomain);
+    if (map)
+    {
+      for (let [filter, include] of map.entries())
+      {
+        if (!include)
+        {
+          excluded.add(filter);
+        }
+        else if (excluded.size == 0 || !excluded.has(filter))
+        {
+          let {selector} = filter;
+          let exception = ElemHideExceptions.getException(selector, domain);
+
+          if (exception)
+            exceptions.push(exception);
+          else
+            selectors.push(selector);
+        }
+      }
+    }
+  }
+
+  return {selectors, exceptions};
+}
+
+/**
+ * Returns the default style sheet that applies on all domains.
+ * @returns {string}
+ */
+function getDefaultStyleSheet()
+{
+  if (!defaultStyleSheet)
+    defaultStyleSheet = createStyleSheet(getUnconditionalSelectors());
+
+  return defaultStyleSheet;
+}
+
+/**
+ * Returns the common style sheet that applies on all unknown domains.
+ * @returns {string}
+ */
+function getCommonStyleSheet()
+{
+  if (!commonStyleSheet)
+  {
+    commonStyleSheet = getDefaultStyleSheet() +
+                       createStyleSheet(getConditionalSelectors("", false));
+  }
+
+  return commonStyleSheet;
+}
+
+/**
+ * Returns the domain-specific style sheet that applies on a given domain.
+ * @param {string} domain
+ * @returns {string}
+ */
+function getDomainSpecificStyleSheet(domain)
+{
+  let styleSheet = styleSheetCache.get(domain);
+
+  if (typeof styleSheet == "undefined")
+  {
+    styleSheet = createStyleSheet(getConditionalSelectors(domain, false));
+    styleSheetCache.set(domain, styleSheet);
+  }
+
+  return styleSheet;
+}
+
+ElemHideExceptions.on("added", ({domains, selector}) =>
+{
+  styleSheetCache.clear();
+  commonStyleSheet = null;
+
+  if (domains)
+  {
+    for (let domain of domains.keys())
+    {
+      // Note: Once an exception domain is known it never becomes unknown, even
+      // when all the exceptions containing that domain are removed. This is a
+      // best-case optimization.
+      if (domain != "")
+        knownExceptionDomains.add(domain);
+    }
+  }
+
   // If this is the first exception for a previously unconditionally applied
   // element hiding selector we need to take care to update the lookups.
   let unconditionalFilterForSelector = filterBySelector.get(selector);
   if (unconditionalFilterForSelector)
   {
-    addToFiltersByDomain(unconditionalFilterForSelector);
+    filtersByDomain.add(unconditionalFilterForSelector);
     filterBySelector.delete(selector);
     unconditionalSelectors = null;
+    defaultStyleSheet = null;
   }
 });
 
@@ -114,10 +298,17 @@ exports.ElemHide = {
    */
   clear()
   {
-    for (let collection of [filtersByDomain, filterBySelector, knownFilters])
+    commonStyleSheet = null;
+
+    for (let collection of [styleSheetCache, filtersByDomain, filterBySelector,
+                            knownFilters, knownExceptionDomains])
+    {
       collection.clear();
+    }
 
     unconditionalSelectors = null;
+    defaultStyleSheet = null;
+
     filterNotifier.emit("elemhideupdate");
   },
 
@@ -130,18 +321,22 @@ exports.ElemHide = {
     if (knownFilters.has(filter))
       return;
 
-    let {selector} = filter;
+    styleSheetCache.clear();
+    commonStyleSheet = null;
 
-    if (!(filter.domains || ElemHideExceptions.hasExceptions(selector)))
+    let {domains, selector} = filter;
+
+    if (!(domains || ElemHideExceptions.hasExceptions(selector)))
     {
       // The new filter's selector is unconditionally applied to all domains
       filterBySelector.set(selector, filter);
       unconditionalSelectors = null;
+      defaultStyleSheet = null;
     }
     else
     {
       // The new filter's selector only applies to some domains
-      addToFiltersByDomain(filter);
+      filtersByDomain.add(filter, domains);
     }
 
     knownFilters.add(filter);
@@ -157,6 +352,9 @@ exports.ElemHide = {
     if (!knownFilters.has(filter))
       return;
 
+    styleSheetCache.clear();
+    commonStyleSheet = null;
+
     let {selector} = filter;
 
     // Unconditially applied element hiding filters
@@ -164,22 +362,12 @@ exports.ElemHide = {
     {
       filterBySelector.delete(selector);
       unconditionalSelectors = null;
+      defaultStyleSheet = null;
     }
     // Conditionally applied element hiding filters
     else
     {
-      let domains = filter.domains || defaultDomains;
-      for (let domain of domains.keys())
-      {
-        let filters = filtersByDomain.get(domain);
-        if (filters)
-        {
-          filters.delete(filter);
-
-          if (filters.size == 0)
-            filtersByDomain.delete(domain);
-        }
-      }
+      filtersByDomain.remove(filter);
     }
 
     knownFilters.delete(filter);
@@ -187,57 +375,175 @@ exports.ElemHide = {
   },
 
   /**
-   * Determines from the current filter list which selectors should be applied
-   * on a particular host name.
-   * @param {string} domain
-   * @param {boolean} [specificOnly] true if generic filters should not apply.
-   * @returns {string[]} List of selectors.
+   * @typedef {object} ElemHideStyleSheet
+   * @property {string} code CSS code.
+   * @property {Array.<string>} selectors List of selectors.
    */
-  getSelectorsForDomain(domain, specificOnly = false)
+
+  /**
+   * Generates a style sheet for a given domain based on the current set of
+   * filters.
+   *
+   * @param {string} domain The domain.
+   * @param {boolean} [specificOnly=false] Whether selectors from generic
+   *   filters should be included.
+   * @param {boolean} [includeSelectors=false] Whether the return value should
+   *   include a separate list of selectors.
+   * @param {boolean} [includeExceptions=false] Whether the return value should
+   *   include a separate list of exceptions.
+   *
+   * @returns {ElemHideStyleSheet} An object containing the CSS code and the
+   *   list of selectors.
+   */
+  generateStyleSheetForDomain(domain, specificOnly = false,
+                              includeSelectors = false,
+                              includeExceptions = false)
   {
-    let selectors = [];
+    let code = null;
+    let selectors = null;
+    let exceptions = null;
 
-    let excluded = new Set();
-    let currentDomain = domain ? domain.replace(/\.+$/, "").toLowerCase() : "";
+    domain = normalizeHostname(domain);
 
-    // This code is a performance hot-spot, which is why we've made certain
-    // micro-optimisations. Please be careful before making changes.
-    while (true)
+    if (specificOnly)
     {
-      if (specificOnly && currentDomain == "")
-        break;
-
-      let filters = filtersByDomain.get(currentDomain);
-      if (filters)
+      if (includeExceptions)
       {
-        for (let [filter, isIncluded] of filters)
-        {
-          if (!isIncluded)
-          {
-            excluded.add(filter);
-          }
-          else
-          {
-            let {selector} = filter;
-            if ((excluded.size == 0 || !excluded.has(filter)) &&
-                !ElemHideExceptions.getException(selector, domain))
-            {
-              selectors.push(selector);
-            }
-          }
-        }
+        let selectorsAndExceptions =
+          getConditionalSelectorsWithExceptions(domain, true);
+
+        selectors = selectorsAndExceptions.selectors;
+        exceptions = selectorsAndExceptions.exceptions;
+      }
+      else
+      {
+        selectors = getConditionalSelectors(domain, true);
       }
 
-      if (currentDomain == "")
-        break;
+      code = createStyleSheet(selectors);
+    }
+    else
+    {
+      let knownSuffix = getKnownSuffix(domain);
 
-      let nextDot = currentDomain.indexOf(".");
-      currentDomain = nextDot == -1 ? "" : currentDomain.substr(nextDot + 1);
+      if (includeSelectors || includeExceptions)
+      {
+        let selectorsAndExceptions =
+          getConditionalSelectorsWithExceptions(knownSuffix, false);
+
+        selectors = selectorsAndExceptions.selectors;
+        exceptions = selectorsAndExceptions.exceptions;
+        code = knownSuffix == "" ? getCommonStyleSheet() :
+                 (getDefaultStyleSheet() + createStyleSheet(selectors));
+
+        selectors = getUnconditionalSelectors().concat(selectors);
+      }
+      else
+      {
+        code = knownSuffix == "" ? getCommonStyleSheet() :
+                 (getDefaultStyleSheet() +
+                  getDomainSpecificStyleSheet(knownSuffix));
+      }
     }
 
-    if (!specificOnly)
-      selectors = getUnconditionalSelectors().concat(selectors);
-
-    return selectors;
+    return {
+      code,
+      selectors: includeSelectors ? selectors : null,
+      exceptions: includeExceptions ? exceptions : null
+    };
   }
 };
+
+/**
+ * Yields rules from a style sheet returned by
+ * <code>{@link createStyleSheet}</code>.
+ *
+ * @param {string} styleSheet A style sheet returned by
+ *   <code>{@link createStyleSheet}</code>. If the given style sheet is
+ *   <em>not</em> a value previously returned by a call to
+ *   <code>{@link createStyleSheet}</code>, the behavior is undefined.
+ * @yields {string} A rule from the given style sheet.
+ */
+function* rulesFromStyleSheet(styleSheet)
+{
+  let startIndex = 0;
+  while (startIndex < styleSheet.length)
+  {
+    let ruleTerminatorIndex = styleSheet.indexOf("\n", startIndex);
+    yield styleSheet.substring(startIndex, ruleTerminatorIndex);
+    startIndex = ruleTerminatorIndex + 1;
+  }
+}
+
+exports.rulesFromStyleSheet = rulesFromStyleSheet;
+
+/**
+ * Splits a list of selectors into groups determined by the value of
+ * <code>{@link selectorGroupSize}</code>.
+ *
+ * @param {Array.<string>} selectors
+ * @yields {Array.<string>}
+ */
+function* splitSelectors(selectors)
+{
+  // Chromium's Blink engine supports only up to 8,192 simple selectors, and
+  // even fewer compound selectors, in a rule. The exact number of selectors
+  // that would work depends on their sizes (e.g. "#foo .bar" has a size of 2).
+  // Since we don't know the sizes of the selectors here, we simply split them
+  // into groups of 1,024, based on the reasonable assumption that the average
+  // selector won't have a size greater than 8. The alternative would be to
+  // calculate the sizes of the selectors and divide them up accordingly, but
+  // this approach is more efficient and has worked well in practice. In theory
+  // this could still lead to some selectors not working on Chromium, but it is
+  // highly unlikely.
+  // See issue #6298 and https://crbug.com/804179
+  for (let i = 0; i < selectors.length; i += selectorGroupSize)
+    yield selectors.slice(i, i + selectorGroupSize);
+}
+
+/**
+ * Escapes curly braces to prevent CSS rule injection.
+ *
+ * @param {string} selector
+ * @returns {string}
+ */
+function escapeSelector(selector)
+{
+  return selector.replace("{", "\\7B ").replace("}", "\\7D ");
+}
+
+/**
+ * Creates an element hiding CSS rule for a given list of selectors.
+ *
+ * @param {Array.<string>} selectors
+ * @returns {string}
+ */
+function createRule(selectors)
+{
+  let rule = "";
+
+  for (let i = 0; i < selectors.length - 1; i++)
+    rule += escapeSelector(selectors[i]) + ", ";
+
+  rule += escapeSelector(selectors[selectors.length - 1]) +
+          " {display: none !important;}\n";
+
+  return rule;
+}
+
+/**
+ * Creates an element hiding CSS style sheet from a given list of selectors.
+ * @param {Array.<string>} selectors
+ * @returns {string}
+ */
+function createStyleSheet(selectors)
+{
+  let styleSheet = "";
+
+  for (let selectorGroup of splitSelectors(selectors))
+    styleSheet += createRule(selectorGroup);
+
+  return styleSheet;
+}
+
+exports.createStyleSheet = createStyleSheet;

@@ -1,0 +1,27 @@
+{
+  "easy_create_filter": {
+    "message": "過濾網頁元素"
+  },
+  "options_short": {
+    "message": "選項"
+  },
+  "overlay_notification_closing_button_optout": {
+    "message": "停止顯示通知"
+  },
+  "stats_label_page": {
+    "message": "本頁有 <strong>$number$</strong>  項被過濾",
+    "placeholders": {
+      "number": {
+        "content": "$1"
+      }
+    }
+  },
+  "stats_label_total": {
+    "message": "共有 <strong>$number$</strong> 項被過濾",
+    "placeholders": {
+      "number": {
+        "content": "$1"
+      }
+    }
+  }
+}

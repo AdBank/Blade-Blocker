@@ -411,8 +411,7 @@ class PropsSelector
     if (propertyExpression.length >= 2 && propertyExpression[0] == "/" &&
         propertyExpression[propertyExpression.length - 1] == "/")
     {
-      regexpString = propertyExpression.slice(1, -1)
-        .replace("\\7B ", "{").replace("\\7D ", "}");
+      regexpString = propertyExpression.slice(1, -1);
     }
     else
       regexpString = filterToRegExp(propertyExpression);
@@ -429,11 +428,11 @@ class PropsSelector
           if (subSelector.startsWith("*") &&
               !incompletePrefixRegexp.test(prefix))
           {
-            subSelector = subSelector.substr(1);
+            subSelector = subSelector.substring(1);
           }
           let idx = subSelector.lastIndexOf("::");
           if (idx != -1)
-            subSelector = subSelector.substr(0, idx);
+            subSelector = subSelector.substring(0, idx);
           yield qualifySelector(subSelector, prefix);
         }
   }
@@ -605,14 +604,13 @@ function shouldObserveCharacterData(patterns)
 
 class ElemHideEmulation
 {
-  constructor(addSelectorsFunc, hideElemsFunc)
+  constructor(hideElemsFunc)
   {
     this._filteringInProgress = false;
     this._lastInvocation = -MIN_INVOCATION_INTERVAL;
     this._scheduledProcessing = null;
 
     this.document = document;
-    this.addSelectorsFunc = addSelectorsFunc;
     this.hideElemsFunc = hideElemsFunc;
     this.observer = new MutationObserver(this.observe.bind(this));
   }
@@ -646,7 +644,7 @@ class ElemHideEmulation
 
     let selectors = [];
     if (match.index > 0)
-      selectors.push(new PlainSelector(selector.substr(0, match.index)));
+      selectors.push(new PlainSelector(selector.substring(0, match.index)));
 
     let startIndex = match.index + match[0].length;
     let content = parseSelectorContent(selector, startIndex);
@@ -677,7 +675,7 @@ class ElemHideEmulation
       return null;
     }
 
-    let suffix = this.parseSelector(selector.substr(content.end + 1));
+    let suffix = this.parseSelector(selector.substring(content.end + 1));
     if (suffix == null)
       return null;
 
@@ -714,9 +712,6 @@ class ElemHideEmulation
       testInfo.lastProcessedElements.clear();
 
     let patterns = filterPatterns(this.patterns, {stylesheets, mutations});
-
-    let selectors = [];
-    let selectorFilters = [];
 
     let elements = [];
     let elementFilters = [];
@@ -783,8 +778,6 @@ class ElemHideEmulation
       {
         if (!patterns.length)
         {
-          if (selectors.length > 0)
-            this.addSelectorsFunc(selectors, selectorFilters);
           if (elements.length > 0)
             this.hideElemsFunc(elements, elementFilters);
           if (typeof done == "function")

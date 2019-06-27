@@ -18,10 +18,11 @@
 "use strict";
 
 const TEST_PAGES_URL = "https://testpages.adblockplus.org/en/";
+const SKIP_ONLINE_TESTS = false;
 
 const assert = require("assert");
 const Jimp = require("jimp");
-const {By, until} = require("selenium-webdriver");
+const {By, until, error: {TimeoutError}} = require("selenium-webdriver");
 
 let lastScreenshot = Promise.resolve();
 
@@ -90,25 +91,60 @@ function getSections(driver)
   ));
 }
 
-it("test pages", function()
+it("Test pages", function()
 {
   return this.driver.navigate().to(TEST_PAGES_URL).then(() =>
     this.driver.findElements(By.css(".site-pagelist a"))
   ).then(elements =>
-    Promise.all(elements.map(elem => elem.getAttribute("href")))
+    Promise.all(elements.map(elem => Promise.all([elem.getAttribute("class"),
+                                                  elem.getAttribute("href"),
+                                                  elem.getText()])))
   ).then(urls =>
   {
     let p1 = Promise.resolve();
-    for (let url of urls)
+    for (let [elemClass, url, pageTitle] of urls)
+    {
+      let onlineTestCase = elemClass &&
+                           elemClass.split(/\s+/).includes("online");
+      if (SKIP_ONLINE_TESTS && onlineTestCase)
+        continue;
+
+      let browser = this.test.parent.title.replace(/\s.*$/, "");
+      if (// https://issues.adblockplus.org/ticket/6917
+          pageTitle == "$subdocument" && browser == "Firefox" ||
+          // Chromium doesn't support Flash
+          pageTitle.startsWith("$object") && browser == "Chromium" ||
+          // Chromium 63 doesn't have user stylesheets (required to
+          // overrule inline styles) and doesn't run content scripts
+          // in dynamically written documents.
+          this.test.parent.title == "Chromium (oldest)" &&
+          (pageTitle == "Inline style !important" ||
+           pageTitle == "Anonymous iframe document.write()"))
+        continue;
+
       p1 = p1.then(() =>
         this.driver.navigate().to(url)
       ).then(() =>
         Promise.all([
           getSections(this.driver),
-          this.driver.findElement(By.css("h2")).getAttribute("textContent"),
-          this.driver.executeScript("document.body.classList.add('expected');")
+          this.driver.executeScript(`
+            let documents = [document];
+            while (documents.length > 0)
+            {
+              let doc = documents.shift();
+              doc.body.classList.add('expected');
+              for (let i = 0; i < doc.defaultView.frames.length; i++)
+              {
+                try
+                {
+                  documents.push(doc.defaultView.frames[i].document);
+                }
+                catch (e) {}
+              }
+            }
+          `)
         ])
-      ).then(([sections, pageTitle]) =>
+      ).then(([sections]) =>
         Promise.all(sections.map(([title, demo, filters]) =>
           Promise.all([
             title.getAttribute("textContent").then(testTitle =>
@@ -124,13 +160,7 @@ it("test pages", function()
         for (let i = 0; i < testCases.length; i++)
         {
           let [title, expectedScreenshot, filters] = testCases[i];
-          let browser = this.test.parent.title.replace(/\s.*$/, "");
-
-          if (// https://issues.adblockplus.org/ticket/6917
-              title == "$subdocument - Test case" && browser == "Firefox" ||
-              // Chromium doesn't support Flash
-              /^\$object(-subrequest)? /.test(title) && browser == "Chromium")
-            continue;
+          let description = ["", "Test case: " + title, url].join("\n       ");
 
           p2 = p2.then(() =>
             this.driver.navigate().to(this.origin + "/options.html")
@@ -141,13 +171,14 @@ it("test pages", function()
               browser.runtime.sendMessage({type: "subscriptions.get",
                                            downloadable: true,
                                            special: true}).then(subs =>
-              {
-                for (let subscription of subs)
+                Promise.all(subs.map(subscription =>
                   browser.runtime.sendMessage({type: "subscriptions.remove",
-                                               url: subscription.url});
-                return browser.runtime.sendMessage({type: "filters.importRaw",
-                                                    text: filters});
-              }).then(() => callback(), callback);
+                                               url: subscription.url})
+                ))
+              ).then(() =>
+                browser.runtime.sendMessage({type: "filters.importRaw",
+                                             text: filters})
+              ).then(errors => callback(errors[0]), callback);
             `, filters.join("\n"))
           ).then(error =>
           {
@@ -156,23 +187,25 @@ it("test pages", function()
             return this.driver.navigate().to(url);
           }).then(() =>
           {
-            if (title.startsWith("$popup "))
+            if (pageTitle.startsWith("$popup"))
             {
               return getSections(this.driver).then(sections =>
                 sections[i][1].findElement(By.css("a[href],button")).click()
               ).then(() =>
-                this.driver.sleep(100)
+                this.driver.sleep(500)
               ).then(() =>
                 this.driver.getAllWindowHandles()
               ).then(handles =>
               {
-                if (title.startsWith("$popup Exception -"))
+                if (pageTitle == "$popup - Exception")
                 {
-                  assert.equal(handles.length, 3, title);
+                  assert.equal(handles.length, 3,
+                               "Popup is whitelisted" + description);
                   return closeWindow(this.driver, handles[2], handles[1]);
                 }
 
-                assert.equal(handles.length, 2, title);
+                assert.equal(handles.length, 2,
+                             "Popup is blocked" + description);
               });
             }
 
@@ -183,8 +216,13 @@ it("test pages", function()
                     screenshot.width == expectedScreenshot.width &&
                     screenshot.height == expectedScreenshot.height &&
                     screenshot.data.compare(expectedScreenshot.data) == 0
-                  ), 1000, title
-                )
+                  ), 1000
+                ).catch(e =>
+                {
+                  if (e instanceof TimeoutError)
+                    e = new Error("Screenshots don't match" + description);
+                  throw e;
+                })
               );
 
             // Sometimes on Firefox there is a delay until the added
@@ -197,6 +235,7 @@ it("test pages", function()
         }
         return p2;
       });
+    }
     return p1;
   });
 });
@@ -218,16 +257,16 @@ it("subscribe link", function()
           until.elementLocated(By.id("dialog-content-predefined")), 1000
         )
       ).then(dialog =>
-        Promise.all([
-          dialog.isDisplayed(),
-          dialog.findElement(By.css("h3")).getText()
-        ]).then(([displayed, title]) =>
-        {
-          assert.ok(displayed, "dialog shown");
-          assert.equal(title, "ABP Testcase Subscription", "title matches");
-
-          return dialog.findElement(By.css("button")).click();
-        })
+        this.driver.wait(() =>
+          Promise.all([
+            dialog.isDisplayed(),
+            dialog.findElement(By.css("h3")).getText()
+          ]).then(([displayed, title]) =>
+            displayed && title == "ABP Testcase Subscription"
+          ), 1000, "dialog shown"
+        ).then(() =>
+          dialog.findElement(By.css("button")).click()
+        )
       ).then(() =>
         this.driver.executeAsyncScript(`
           let callback = arguments[arguments.length - 1];

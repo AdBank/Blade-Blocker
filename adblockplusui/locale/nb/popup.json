@@ -1,0 +1,27 @@
+{
+  "easy_create_filter": {
+    "message": "Blokkér element"
+  },
+  "options_short": {
+    "message": "Alternativer"
+  },
+  "overlay_notification_closing_button_optout": {
+    "message": "Ikke vis flere varsler"
+  },
+  "stats_label_page": {
+    "message": "<strong>$number$</strong> på denne siden",
+    "placeholders": {
+      "number": {
+        "content": "$1"
+      }
+    }
+  },
+  "stats_label_total": {
+    "message": "<strong>$number$</strong> totalt",
+    "placeholders": {
+      "number": {
+        "content": "$1"
+      }
+    }
+  }
+}

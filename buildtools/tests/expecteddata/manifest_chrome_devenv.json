@@ -15,7 +15,7 @@
       "53": "icons/abp-53.png"
     },
     "default_popup": "popup.html",
-    "default_title": "__MSG_name__"
+    "default_title": "BLADE ad blocker+"
   },
   "content_scripts": [
     {
@@ -32,7 +32,7 @@
     }
   ],
   "default_locale": "en_US",
-  "description": "__MSG_description__",
+  "description": "BLADE ad blocker+ blocks ads and protects your privacy",
   "devtools_page": "devtools.html",
   "externally_connectable": {
     "accepts_tls_channel_id": true,
@@ -51,7 +51,7 @@
   "manifest_version": 2,
   "minimum_chrome_version": "49.0",
   "minimum_opera_version": "36.0",
-  "name": "__MSG_name__",
+  "name": "BLADE ad blocker+",
   "optional_permissions": [
     "webRequest"
   ],
@@ -63,7 +63,7 @@
     "tabs",
     "<all_urls>"
   ],
-  "short_name": "__MSG_name__",
+  "short_name": "BLADE ad blocker+",
   "storage": {
     "managed_schema": "storage.json"
   },

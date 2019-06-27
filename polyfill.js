@@ -18,7 +18,8 @@
 "use strict";
 
 {
-  const asyncAPIs = [
+  let asyncAPIs = [
+    "browserAction.setIcon",
     "browserAction.getPopup",
     "contextMenus.removeAll",
     "devtools.panels.create",
@@ -32,6 +33,7 @@
     "storage.local.remove",
     "storage.local.set",
     "storage.managed.get",
+    "tabs.captureVisibleTab",
     "tabs.create",
     "tabs.executeScript",
     "tabs.get",
@@ -49,6 +51,15 @@
     "windows.update"
   ];
 
+  // Microsoft Edge (44.17763.1.0), Chrome (<= 66) and Opera (<= 54)
+  // don't accept passing a callback for
+  // browserAction.setBadgeText and browserAction.setBadgeBackgroundColor
+  const maybeAsyncAPIs = [
+    ["browserAction.setBadgeText", {text: ""}],
+    ["browserAction.setBadgeBackgroundColor", {color: [0, 0, 0, 0]}]
+  ];
+  let syncAPIs = [];
+
   // Since we add a callback for all messaging API calls in our wrappers,
   // Chrome assumes we're interested in the response; when there's no response,
   // it sets runtime.lastError
@@ -63,7 +74,7 @@
 
   let messageListeners = new WeakMap();
 
-  function wrapAsyncAPI(api)
+  function getAPIWrappables(api)
   {
     let object = browser;
     let path = api.split(".");
@@ -81,6 +92,18 @@
     if (!func)
       return;
 
+    return {object, name, func};
+  }
+
+  function wrapAsyncAPI(api)
+  {
+    let wrappables = getAPIWrappables(api);
+
+    if (!wrappables)
+      return;
+
+    let {object, name, func} = wrappables;
+
     // If the property is not writable assigning it will fail, so we use
     // Object.defineProperty here instead. Assuming the property isn't
     // inherited its other attributes (e.g. enumerable) are preserved,
@@ -89,19 +112,6 @@
     Object.defineProperty(object, name, {
       value(...args)
       {
-        let callStack = new Error().stack;
-
-        if (typeof args[args.length - 1] == "function")
-          return func.apply(object, args);
-
-        // If the last argument is undefined, we drop it from the list assuming
-        // it stands for the optional callback. We must do this, because we have
-        // to replace it with our own callback. If we simply append our own
-        // callback to the list, it won't match the signature of the function
-        // and will cause an exception.
-        if (typeof args[args.length - 1] == "undefined")
-          args.pop();
-
         let resolvePromise = null;
         let rejectPromise = null;
 
@@ -113,12 +123,7 @@
             // runtime.lastError is already an Error instance on Edge, while on
             // Chrome it is a plain object with only a message property.
             if (!(error instanceof Error))
-            {
               error = new Error(error.message);
-
-              // Add a more helpful stack trace.
-              error.stack = callStack;
-            }
 
             rejectPromise(error);
           }
@@ -133,6 +138,23 @@
           resolvePromise = resolve;
           rejectPromise = reject;
         });
+      }
+    });
+  }
+
+  function wrapSyncAPI(api)
+  {
+    let wrappables = getAPIWrappables(api);
+
+    if (!wrappables)
+      return;
+
+    let {object, name, func} = wrappables;
+
+    Object.defineProperty(object, name, {
+      value(...args)
+      {
+        return Promise.resolve(func.call(object, ...args));
       }
     });
   }
@@ -215,16 +237,44 @@
     return true;
   }
 
+  function acceptsCallback(func, args)
+  {
+    try
+    {
+      func(...args, () => {});
+      return true;
+    }
+    catch (e)
+    {
+      return false;
+    }
+  }
+
   if (shouldWrapAPIs())
   {
     // Unlike Firefox and Microsoft Edge, Chrome doesn't have a "browser"
     // object, but provides the extension API through the "chrome" namespace
     // (non-standard).
     if (typeof browser == "undefined")
-      window.browser = chrome;
+      self.browser = chrome;
+
+    for (let [api, ...testArgs] of maybeAsyncAPIs)
+    {
+      let wrappables = getAPIWrappables(api);
+
+      if (!wrappables)
+        continue;
+
+      let {func} = wrappables;
+
+      (acceptsCallback(func, testArgs) ? asyncAPIs : syncAPIs).push(api);
+    }
 
     for (let api of asyncAPIs)
       wrapAsyncAPI(api);
+
+    for (let api of syncAPIs)
+      wrapSyncAPI(api);
 
     wrapRuntimeOnMessage();
   }
@@ -237,4 +287,76 @@
     if (!(Symbol.iterator in object.prototype))
       object.prototype[Symbol.iterator] = Array.prototype[Symbol.iterator];
   }
+}
+
+// Object.values is not supported in Chrome <54.
+if (!("values" in Object))
+  Object.values = obj => Object.keys(obj).map(key => obj[key]);
+
+// Microsoft Edge (42.17134.1.0) doesn't support webRequest.ResourceType, but
+// we can obtain the list of accepted resource types from the error message
+// when creating an onBeforeRequest event listener with an unsupported resource
+// type.
+//
+// Note: that while `browser.webRequest` is `undefined` for content scripts,
+// with Firefox for Android `"webRequest" in browser` is actually `true`!
+// See https://bugzil.la/1556773
+if (browser.webRequest && !("ResourceType" in browser.webRequest))
+{
+  try
+  {
+    browser.webRequest.onBeforeRequest.addListener(
+      details => {}, {urls: ["<all_urls>"], types: ["foo"]}
+    );
+  }
+  catch (error)
+  {
+    let errorMessage = error.toString();
+    errorMessage = errorMessage.substr(errorMessage.lastIndexOf(":"));
+
+    browser.webRequest.ResourceType = {};
+    if (errorMessage.includes("main_frame"))
+    {
+      for (let type of errorMessage.match(/[a-z_]+/g))
+        browser.webRequest.ResourceType[type.toUpperCase()] = type;
+    }
+  }
+}
+
+// Chrome <50 does not support createImageBitmap, this is a simplistic
+// polyfill which only fulfills the usecase of accepting a Blob containing
+// an image and returning something which CanvasRenderingContext2D.drawImage()
+// accepts.
+if (typeof createImageBitmap == "undefined")
+{
+  self.createImageBitmap = blob =>
+  {
+    return new Promise((resolve, reject) =>
+    {
+      let image = new Image();
+      image.src = URL.createObjectURL(blob);
+      image.addEventListener("load", () =>
+      {
+        URL.revokeObjectURL(image.src);
+        resolve(image);
+      });
+      image.addEventListener("error", () =>
+      {
+        URL.revokeObjectURL(image.src);
+        reject("createImageBitmap failed");
+      });
+    });
+  };
+}
+
+// Chrome <69 does not support OffscreenCanvas
+if (typeof OffscreenCanvas == "undefined")
+{
+  self.OffscreenCanvas = function(width, height)
+  {
+    let canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    return canvas;
+  };
 }

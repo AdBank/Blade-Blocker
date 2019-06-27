@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 from xml.etree import ElementTree
 from zipfile import ZipFile
+import ConfigParser
 
 import packager
 import packagerChrome
@@ -70,7 +71,6 @@ def update_appx_manifest(manifest_path, base_dir, files, metadata,
         filenames.append(icon_path)
 
     assets = packagerChrome.makeIcons(files, filenames)
-
     author = metadata.get('general', 'author')
 
     overrides = [
@@ -88,8 +88,21 @@ def update_appx_manifest(manifest_path, base_dir, files, metadata,
         ('_d:Applications/_d:Application/uap:VisualElements', None, [
             ('Square150x150Logo', assets[150]),
             ('Square44x44Logo', assets[44]),
+            ('BackgroundColor', metadata.get('general', 'background_color')),
         ]),
     ]
+
+    try:
+        overrides.append((
+            '_d:Applications/_d:Application/_d:Extensions/' +
+            'uap3:Extension/uap3:AppExtension',
+            None,
+            [('Id', packager.get_build_specific_option(release_build,
+                                                       metadata,
+                                                       'extension_id'))],
+        ))
+    except ConfigParser.NoOptionError:
+        pass
 
     tree = ElementTree.parse(manifest_path)
     root = tree.getroot()
@@ -164,7 +177,7 @@ def createBuild(baseDir, type='edge', outFile=None,  # noqa: preserve API.
     # product name is tranlated into Azerbajani.
     data = json.loads(files['_locales/{}/messages.json'.format(defaultLocale)])
     files['manifest.json'] = re.sub(
-        r'__MSG_(name(?:_devbuild)?)__',
+        r'__MSG_(name(?:_devbuild|_releasebuild)?)__',
         lambda m: data[m.group(1)]['message'],
         packagerChrome.createManifest(params, files),
     )
