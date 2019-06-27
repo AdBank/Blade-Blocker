@@ -2,16 +2,26 @@
 
 ### Building extension
 
-Run the following commands to generate **zip** file, which you will publish to **Chrome Web Store**.
+Run the following commands to generate **zip** file, which you will publish to **Chrome Web Store** or to **Firefox Add-ons**.
 
 Download **Docker** for your platform. https://www.docker.com/get-started
 
-Run following commands in terminal:
+Run following commands in terminal to generate zip for Chrome:
 ```sh
 git clone https://github.com/AdBank/Blade-Blocker
 cd ./BLADE-BLOCKER
 ./build.sh
-./run-daemon.sh <paste here url (f.e. http://example.com)> or leave it empty to run with dev server
+./run-daemon.sh <paste here url> <paste here extension id> chrome
+```
+
+This will create **zip** file ready to deploy to **Firefix Add-ons** and **devenv.gecko** folder ready to upload to **about:debugging** in developer mode.
+
+Run following commands in terminal to generate zip for Chrome:
+```sh
+git clone https://github.com/AdBank/Blade-Blocker
+cd ./BLADE-BLOCKER
+./build.sh
+./run-daemon.sh <paste here url> <paste here extension id> gecko
 ```
 
 This will create **zip** file ready to deploy to **Chrome Web Store** and **devenv.chrome** folder ready to upload to **chrome://extensions/** in developer mode.
@@ -38,7 +48,7 @@ The publishing process takes up to 3 days after that extension can be installed 
 
 ### Running UI development environment
 
-Run the following commands in the ```bladeui``` directory :
+Run the following commands in the ```adblockplusui``` directory :
 
 * ```npm i```
 * ```npm start```

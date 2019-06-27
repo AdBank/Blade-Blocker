@@ -4,7 +4,7 @@
 
 const REPLACER_EXTENSION_ID = "replacer@adbank.network";
 
-chrome.runtime.onMessageExternal.addListener(
+browser.runtime.onMessageExternal.addListener(
   (request, sender, sendResponse) =>
   {
     if (sender.id === REPLACER_EXTENSION_ID)
