@@ -1,6 +1,6 @@
 [general]
 basename = blockerblade
-version = 1.0.0
+version = 1.0.1
 author = Adbank
 backgroundScripts = polyfill.js
   ext/common.js
