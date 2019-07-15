@@ -14,7 +14,6 @@ browser.runtime.onMessageExternal.addListener(
     // listener on message when replacer sends user bladeid (after user signin/signup)
     if (request.userBladeId)
     {
-      // browser.storage.sync.set({userBladeId: request.userBladeId}); need to change it, this functionality should be in replacer
       sendResponse({userBladeIdReceived: true});
     }
   });
