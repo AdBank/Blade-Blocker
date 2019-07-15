@@ -1,9 +1,51 @@
 .main-view {
   text-align: center;
-  padding-top: 32px;
+  padding-top: 42px;
+
+  .top-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    width: 100%;
+    top: 0;
+    left: 0;
+    background-color: #EC1D25;
+
+    p {
+      color: #FFFFFF;	
+      font-family: Montserrat;	
+      font-size: 10px;	
+      line-height: 32px;
+      text-align: center;
+    }
+
+    .fa {
+      color: white;
+    }
+
+    .cta-link {
+      color: #FFFFFF;
+      font-family: Montserrat;
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 0.2px;
+      line-height: 36px;
+      text-align: center;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+  }
+
+  .faq {
+    margin: 4px 0 32px 0;
+  }
 
   .content {
-    margin: 75px -24px 50px -24px;
+    margin: 20px -24px 50px -24px;
     padding: 24px 0;
     background: rgba(#333333, .5);
 
