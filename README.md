@@ -11,7 +11,7 @@ Run following commands in terminal to generate zip for Chrome:
 git clone https://github.com/AdBank/Blade-Blocker
 cd ./BLADE-BLOCKER
 ./build.sh
-./run-daemon.sh <paste here url> <paste here extension id> chrome
+./run-daemon.sh <paste here url> chrome
 ```
 
 This will create **zip** file ready to deploy to **Chrome Web Store** and **devenv.chrome** folder ready to upload to **chrome://extensions/** in developer mode.
@@ -21,10 +21,10 @@ Run following commands in terminal to generate zip for Firefox:
 git clone https://github.com/AdBank/Blade-Blocker
 cd ./BLADE-BLOCKER
 ./build.sh
-./run-daemon.sh <paste here url> <paste here extension id> gecko
+./run-daemon.sh <paste here url> gecko
 ```
 
-This will create **zip** file ready to deploy to **Firefix Add-ons** and **devenv.gecko** folder ready to upload to **about:debugging** in developer mode.
+This will create **zip** file ready to deploy to **Firefox Add-ons** and **devenv.gecko** folder ready to upload to **about:debugging** in developer mode.
 
 ### Publish extension to Chrome Web Store
 
