@@ -15,19 +15,21 @@ browser.runtime.onMessageExternal.addListener(
     if (request.userBladeId) {
       sendResponse({userBladeIdReceived: true});
 
-      browser.tabs.query({active: true, lastFocusedWindow: true})
-        .then(tabs => {
-          if (tabs.length > 0) {
-            browser.runtime.sendMessage({
-              type: "filters.whitelist",
-              tab: {id: tabs[0].id, url: tabs[0].url}
-            }).then(() => {
+      setTimeout(() => {
+        browser.tabs.query({active: true, lastFocusedWindow: true})
+          .then(tabs => {
+            if (tabs.length > 0) {
               browser.runtime.sendMessage({
-                type: "filters.unwhitelist",
+                type: "filters.whitelist",
                 tab: {id: tabs[0].id, url: tabs[0].url}
+              }).then(() => {
+                browser.runtime.sendMessage({
+                  type: "filters.unwhitelist",
+                  tab: {id: tabs[0].id, url: tabs[0].url}
+                });
               });
-            });
-          }
-        });
+            }
+          });
+      }, 1000)
     }
   });
