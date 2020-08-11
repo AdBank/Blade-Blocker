@@ -1,0 +1,36 @@
+.privacy-view {
+  h2 {
+    font-size: 20px;
+  }
+  
+  h1 {
+    font-size: 24px;
+    margin: 15px 0;
+  }
+
+  p, li {
+    margin: 10px 0;
+  }
+
+  ul li{
+    list-style-type: disc
+  }
+
+  a {
+    color: blue;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  button {
+    font-size: 18px;
+    border: 1px solid #000;
+    padding: 10px;
+    margin: 0.2em 0.2em 0.5em 0;
+    cursor: pointer;
+
+    &:focus {
+      outline: auto;
+    }
+  }
+}
