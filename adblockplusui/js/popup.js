@@ -20,13 +20,19 @@
 
 require("./io-big-toggle.js");
 require("./popup.notifications.js");
+const { detect } = require('detect-browser');
+const browserName = detect();
 
 const {
-  main
+  main,
+  firefoxOptIn,
+  privacy
 } = require("./html/index.js");
 
 const {
-  Main
+  Main,
+  FirefoxOptIn,
+  Privacy
 } = require("./pages/index.js");
 
 function onChangeView(next, previous)
@@ -41,15 +47,55 @@ function onChangeView(next, previous)
   loadPage(next, previous);
 }
 
-function loadPage()
+function loadPage(page)
 {
-  const initialView = new Main({onChangeView});
-  initialView.render(main);
+  switch(page) {
+    case 'main': {
+      const initialView = new Main({onChangeView});
+      initialView.render(main);
+      break;
+    }
+    case 'firefoxOptIn': {
+      const initialView = new FirefoxOptIn({onChangeView});
+      initialView.render(firefoxOptIn);
+      break;
+    }
+    case 'privacy': {
+      const initialView = new Privacy({onChangeView});
+      initialView.render(privacy);
+      break;
+    }
+  }
+}
+
+async function showOptIn() {
+  const promise = new Promise(resolve => {
+    browser.storage.local.get(null).then(data => {
+      if (data && browserName && browserName.name === "firefox") {
+        if (!data.firefoxOptInShown || !data.firefoxOptInEnabled) {
+          browser.storage.local.set({firefoxOptInShown: true, bladeCurrentPage: "firefoxOptIn"})
+          loadPage('firefoxOptIn');
+          resolve(true);
+        }
+        else if (!data.privacyShown || !data.privacyEnabled) {
+          browser.storage.local.set({privacyShown: true, bladeCurrentPage: "privacy"})
+          loadPage('privacy');
+          resolve(true);
+        } else {
+          resolve(false);  
+        }
+      } else {
+        resolve(false);
+      }
+    });
+  })
+
+  return promise;
 }
 
 async function renderInitialView()
 {
-  loadPage();
+  loadPage('main');
 }
 
 // platform and application dataset bootstrap
@@ -80,5 +126,9 @@ Promise.all([
 
 document.addEventListener("DOMContentLoaded", async () =>
 {
-  await renderInitialView();
+  const optInShown = await showOptIn();
+
+  if (!optInShown) {
+    renderInitialView();
+  }
 });

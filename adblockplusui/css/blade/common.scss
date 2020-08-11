@@ -45,6 +45,7 @@ button {
   height: 450px;
   padding: 24px;
   background: url(./blade_assets/blade-background-all-other-screens.png) 0 0 / cover no-repeat;
+  overflow-x: hidden;
 }
 
 .main-app-wrapper.custom-bg {
@@ -55,6 +56,9 @@ button {
   height: 100%;
 }
 
+.optin-view {
+  background: white !important;
+}
 
 .toggle-checkbox {
   .checked, .unchecked {

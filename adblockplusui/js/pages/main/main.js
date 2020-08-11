@@ -15,6 +15,8 @@ class Main extends BaseClass
   initListeners()
   {
     const mainAppWrapper = document.getElementById("main-app-wrapper");
+    mainAppWrapper.classList.remove("optin-view");
+
 
     this.toggler = document.getElementById("checkbox");
     const blockedCount = document.getElementById("blockedCount");
