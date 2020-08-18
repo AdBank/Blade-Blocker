@@ -7,7 +7,7 @@
       "'acorn' and 'ajv' are peer dependencies of manifoldjs, we don't use",
       " them otherwise."
     ],
-    "acorn": "^6.0.0",
+    "acorn": "^6.4.1",
     "ajv": "^5.0.0",
     "jsdoc": "3.5.5",
     "manifoldjs": "0.7.6",
