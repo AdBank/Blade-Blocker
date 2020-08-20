@@ -14,7 +14,7 @@ const html = `
     <a href="https://blade.software/faq.html" target="_blank" rel="noopener noreferrer" class="caption">Learn why you need two extensions here.</a>
   </div>
   <div class="logo">
-    <img src="./skin/blade_assets/blade-powered-adbank-logo.svg" 
+    <img src="./skin/blade_assets/blade-powered-adbank-logo.svg"
     alt="blade logo" />
   </div>
   <div class="content">
@@ -22,7 +22,7 @@ const html = `
     <p class="caption-count">CURRENT BLOCKS</p>
   </div>
   <footer>
-    <div class="version"><p class="text">Version</p><p class="version-number">1.0.4</p></div>
+    <div class="version"><p class="text">Version</p><p class="version-number">1.0.5</p></div>
     <div class="toggler" id="toggler"><p>Status</p>${checkbox(true)}</div>
   </footer>
 </div>
