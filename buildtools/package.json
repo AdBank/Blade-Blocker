@@ -8,7 +8,7 @@
       " them otherwise."
     ],
     "acorn": "^6.0.0",
-    "ajv": "^5.0.0",
+    "ajv": "^6.12.3",
     "jsdoc": "3.5.5",
     "manifoldjs": "0.7.6",
     "memory-fs": "0.4.1",
